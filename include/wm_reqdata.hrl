@@ -1,5 +1,4 @@
 -record(wm_reqdata, {
-    
     % Reqstate
     socket=undefined,
     metadata=dict:new(),

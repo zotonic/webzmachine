@@ -1,22 +1,23 @@
 ERL          ?= erl
-EBIN_DIRS    := $(wildcard deps/*/ebin)
-APP          := webmachine
+APP          := webzmachine
 
-all: erl ebin/$(APP).app
+.PHONY: deps
 
-mochi:
-	@(cd deps/mochiweb;$(MAKE))
+all: deps
+	@(./rebar compile)
 
-erl:
-	@$(ERL) -pa $(EBIN_DIRS) -noinput +B \
-	  -eval 'case make:all() of up_to_date -> halt(0); error -> halt(1) end.'
+deps:
+	@(./rebar get-deps)
+
+clean:
+	@(./rebar clean)
+
+distclean: clean
+	@(./rebar delete-deps)
 
 edoc:
 	@$(ERL) -noshell -run edoc_run application '$(APP)' '"."' '[{preprocess, true},{includes, ["."]}]'
 
-clean: 
-	@echo "removing:"
-	rm -f ebin/*.beam ebin/*.app
+test: all
+	@(./rebar skip_deps=true eunit)
 
-ebin/$(APP).app: src/$(APP).app
-	cp src/$(APP).app $@

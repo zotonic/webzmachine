@@ -20,9 +20,8 @@ ensure_started(App) ->
 start_link() ->
     skel_deps:ensure(),
     ensure_started(crypto),
-    application:set_env(webmachine, webmachine_logger_module, 
-                        webmachine_logger),
-    ensure_started(webmachine),
+    application:set_env(webzmachine, webmachine_logger_module, webmachine_logger),
+    ensure_started(webzmachine),
     skel_sup:start_link().
 
 %% @spec start() -> ok
@@ -30,8 +29,7 @@ start_link() ->
 start() ->
     skel_deps:ensure(),
     ensure_started(crypto),
-    application:set_env(webmachine, webmachine_logger_module, 
-                        webmachine_logger),
+    application:set_env(webzmachine, webmachine_logger_module, webmachine_logger),
     ensure_started(webmachine),
     application:start(skel).
 
@@ -39,6 +37,6 @@ start() ->
 %% @doc Stop the skel server.
 stop() ->
     Res = application:stop(skel),
-    application:stop(webmachine),
+    application:stop(wezbmachine),
     application:stop(crypto),
     Res.

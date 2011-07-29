@@ -53,11 +53,11 @@ remove_dispatch_rules() ->
              M /= ?MODULE ]).
 
 get_dispatch_list() ->
-    {ok, Dispatch} = application:get_env(webmachine, dispatch_list),
+    {ok, Dispatch} = application:get_env(webzmachine, dispatch_list),
     Dispatch.
 
 set_dispatch_list(NewList) when is_list(NewList) ->
-    application:set_env(webmachine, dispatch_list, NewList).
+    application:set_env(webzmachine, dispatch_list, NewList).
 
 %%
 %% Resource

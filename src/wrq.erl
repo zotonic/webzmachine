@@ -16,7 +16,7 @@
 -module(wrq).
 -author('Justin Sheehy <justin@basho.com>').
 
--export([create/4,load_dispatch_data/7]).
+-export([create/5,load_dispatch_data/7]).
 -export([method/1,version/1,peer/1,disp_path/1,path/1,raw_path/1,path_info/1,
          response_code/1,req_cookie/1,req_qs/1,req_headers/1,req_body/1,
          stream_req_body/2,resp_redirect/1,resp_headers/1,resp_body/1,
@@ -32,8 +32,9 @@
 % @type reqdata(). The opaque data type used for req/resp data structures.
 -include_lib("include/wm_reqdata.hrl").
 
-create(Method,Version,RawPath,Headers) ->
+create(Socket,Method,Version,RawPath,Headers) ->
     create(#wm_reqdata{
+                socket=Socket,
                 method=Method,version=Version,
                 raw_path=RawPath,req_headers=prepare_headers(Headers),
                 path="defined_in_create",

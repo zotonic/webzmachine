@@ -21,8 +21,6 @@
 -author('Justin Sheehy <justin@basho.com>').
 -author('Andy Gross <andy@basho.com>').
 
--include("../../../include/zotonic_release.hrl").
-
 -export([get_peer/1]). % used in initialization
 
 % actual interface for resource functions
@@ -79,7 +77,6 @@
 -include_lib("include/wm_reqdata.hrl").
 
 -define(WMVSN, "1.7.3 (compat)").
--define(QUIP, "humming along").
 -define(IDLE_TIMEOUT, infinity).
 
 get_peer(ReqData) ->
@@ -561,7 +558,7 @@ make_headers(Code, Transfer, Length, RD) ->
                     LengthHeaders
             end
     end,
-    ServerHeader = "MochiWeb/1.1 WebMachine/" ++ ?WMVSN ++ " Zotonic/" ++ ?ZOTONIC_VERSION,
+    ServerHeader = "MochiWeb/1.1 WebZMachine/" ++ ?WMVSN, % ++ " Zotonic/" ++ ?ZOTONIC_VERSION,
     WithSrv = mochiweb_headers:enter("Server", ServerHeader, Hdrs0),
     Hdrs = case mochiweb_headers:get_value("date", WithSrv) of
 	undefined ->

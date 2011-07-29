@@ -35,7 +35,7 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 start_logger(BaseDir) ->
-    case application:get_env(webmachine, webmachine_logger_module) of
+    case application:get_env(webzmachine, webmachine_logger_module) of
         {ok, LoggerModule} ->
             ChildSpec = 
                 {webmachine_logger,

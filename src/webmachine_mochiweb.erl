@@ -48,11 +48,31 @@ stop() ->
 
 stop(Name) ->
     mochiweb_http:stop(Name).
-    
+
+init_reqdata(MochiReq) ->
+    Socket = MochiReq:get(socket),
+    Method = MochiReq:get(method),
+    RawPath = MochiReq:get(raw_path), 
+    Version = MochiReq:get(version),
+    Headers = MochiReq:get(headers),
+    %
+    ReqData0 = wrq:create(Socket,Method,Version,RawPath,Headers),
+    {Peer, ReqData} = webmachine_request:get_peer(ReqData0),
+    PeerState = wrq:set_peer(Peer, ReqData),
+    LogData = #wm_log_data{req_id=webmachine_id:generate(),
+                           start_time=now(),
+                           method=Method,
+                           headers=Headers,
+                           peer=PeerState#wm_reqdata.peer,
+                           path=RawPath,
+                           version=Version,
+                           response_code=404,
+                           response_length=0},
+    PeerState#wm_reqdata{log_data=LogData}.
 
 loop(MochiReq, LoopOpts) ->
     reset_process_dictionary(),
-    ReqData = webmachine:init_reqdata(mochiweb, MochiReq),
+    ReqData = init_reqdata(MochiReq),
     Host = case host_headers(ReqData) of
                [H|_] -> H;
                [] -> []
@@ -67,12 +87,12 @@ loop(MochiReq, LoopOpts) ->
                               end,
     case Dispatch of
         {no_dispatch_match, _UnmatchedHost, _UnmatchedPathTokens} ->
-            {ok, ErrorHandler} = application:get_env(webmachine, error_handler),
+            {ok, ErrorHandler} = application:get_env(webzmachine, error_handler),
             {ErrorHTML,ReqState1} = ErrorHandler:render_error(404, ReqDispatch, {none, none, []}),
             ReqState2 = webmachine_request:append_to_response_body(ErrorHTML, ReqState1),
             {ok,ReqState3} = webmachine_request:send_response(404, ReqState2),
             LogData = webmachine_request:log_data(ReqState3),
-            case application:get_env(webmachine,webmachine_logger_module) of
+            case application:get_env(webzmachine,webmachine_logger_module) of
                 {ok, LogModule} ->
                     spawn(LogModule, log_access, [LogData]);
                 _ -> nop
@@ -102,7 +122,7 @@ loop(MochiReq, LoopOpts) ->
                     ?WM_DBG({error, erlang:get_stacktrace()}),
                     {ok,RD3} = webmachine_request:send_response(500, RD2),
                     Resource:stop(RD3),
-                    case application:get_env(webmachine, webmachine_logger_module) of
+                    case application:get_env(webzmachine, webmachine_logger_module) of
                         {ok, LogModule} -> 
                             spawn(LogModule, log_access, [webmachine_request:log_data(RD3)]);
                         _ ->
@@ -126,7 +146,8 @@ host_headers(ReqData) ->
                           "host"]],
      V /= undefined].
 
-   
+
+
 %% @doc Sometimes a connection gets re-used for different sites. Make sure that no information
 %% leaks from on request to another.
 reset_process_dictionary() ->

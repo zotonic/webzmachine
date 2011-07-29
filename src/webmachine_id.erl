@@ -19,7 +19,7 @@
 
 generate() ->
     NodeId = 
-        case application:get_env(webmachine, node_id) of
+        case application:get_env(webzmachine, node_id) of
             undefined -> 9;
             {ok, NodeId_} -> NodeId_
         end,

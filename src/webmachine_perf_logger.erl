@@ -156,7 +156,7 @@ suffix({Y, M, D, H}) ->
     HS = zeropad(H, 2),
     lists:flatten([$., YS, $_, MS, $_, DS, $_, HS]).
 
-fmt_plog(Time, ReqId, Ip,  Method, Path, {VM,Vm}, Status, Length, Mod, TTPD, TTPS) ->
+fmt_plog(Time, ReqId, Ip,  Method, Path, {VM,Vm}, Status, Length, Mod, TTPD, _TTPS) ->
     [fmt_ip(Ip), " - ", [$\s], Time, [$\s, $"], Method, " ", Path,
      " HTTP/", integer_to_list(VM), ".", integer_to_list(Vm), [$",$\s],
      Status, [$\s], Length, " " , Mod, " ", TTPD, " ", integer_to_list(ReqId), $\n].

@@ -72,7 +72,7 @@ d(DecisionID, Rs, Rd) ->
 respond(Code, Rs, Rd) ->
     {RsCode, RdCode} = case Code of
         Code when Code == 403; Code == 404 ->
-            {ok, ErrorHandler} = application:get_env(webmachine, error_handler),
+            {ok, ErrorHandler} = application:get_env(webzmachine, error_handler),
             Reason = {none, none, []},
             {ErrorHTML, RdError} = ErrorHandler:render_error(Code, Rd, Reason),
             {Rs, wrq:set_resp_body(ErrorHTML, RdError)};
@@ -100,7 +100,7 @@ respond(Code, Headers, Rs, Rd) ->
     respond(Code, Rs, RdHs).
 
 error_response(Code, Reason, Rs, Rd) ->
-    {ok, ErrorHandler} = application:get_env(webmachine, error_handler),
+    {ok, ErrorHandler} = application:get_env(webzmachine, error_handler),
     {ErrorHTML, Rd1} = ErrorHandler:render_error(Code, Rd, Reason),
     Rd2 = wrq:set_resp_body(ErrorHTML, Rd1),
     respond(Code, Rs, Rd2).
@@ -129,11 +129,11 @@ decision_flow({ErrCode, Reason}, _TestResult, Rs, Rd) when is_integer(ErrCode) -
     error_response(ErrCode, Reason, Rs, Rd).
 
 do_log(LogData) ->
-    case application:get_env(webmachine, webmachine_logger_module) of
+    case application:get_env(webzmachine, webmachine_logger_module) of
         {ok, LoggerModule} -> LoggerModule:log_access(LogData);
         _ -> nop
     end,
-    case application:get_env(webmachine, enable_perf_logger) of
+    case application:get_env(webzmachine, enable_perf_logger) of
 	{ok, true} ->
 	    webmachine_perf_logger:log(LogData);
 	_ ->
