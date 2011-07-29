@@ -8,7 +8,7 @@
     log_data=undefined,
 
     % Reqdata
-    method, version,
+    method, scheme, version,
     disp_path, path, raw_path, path_info, path_tokens,
     app_root,response_code,max_recv_body,
     req_cookie, req_qs, req_headers, req_body,

@@ -76,7 +76,7 @@
 -include("webmachine_logger.hrl").
 -include_lib("include/wm_reqdata.hrl").
 
--define(WMVSN, "1.7.3 (compat)").
+-define(WMVSN, "1.8.1 (compat)").
 -define(IDLE_TIMEOUT, infinity).
 
 get_peer(ReqData) ->

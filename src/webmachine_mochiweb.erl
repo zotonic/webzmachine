@@ -51,12 +51,13 @@ stop(Name) ->
 
 init_reqdata(MochiReq) ->
     Socket = MochiReq:get(socket),
+    Scheme = MochiReq:get(scheme),
     Method = MochiReq:get(method),
     RawPath = MochiReq:get(raw_path), 
     Version = MochiReq:get(version),
     Headers = MochiReq:get(headers),
     %
-    ReqData0 = wrq:create(Socket,Method,Version,RawPath,Headers),
+    ReqData0 = wrq:create(Socket,Method,Scheme,Version,RawPath,Headers),
     {Peer, ReqData} = webmachine_request:get_peer(ReqData0),
     PeerState = wrq:set_peer(Peer, ReqData),
     LogData = #wm_log_data{req_id=webmachine_id:generate(),

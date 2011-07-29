@@ -118,7 +118,22 @@ decision_test(Test,TestVal,TrueFlow,FalseFlow, Rs, Rd) ->
 	TestVal -> decision_flow(TrueFlow, Test, Rs, Rd);
 	_ -> decision_flow(FalseFlow, Test, Rs, Rd)
     end.
-	    
+
+decision_test_fn({Test, Rs, Rd}, TestFn, TrueFlow, FalseFlow) ->
+    decision_test_fn(Test, TestFn, TrueFlow, FalseFlow, Rs, Rd).
+
+decision_test_fn({error, Reason}, _TestFn, _TrueFlow, _FalseFlow, Rs, Rd) ->
+    error_response(Reason, Rs, Rd);
+decision_test_fn({error, R0, R1}, _TestFn, _TrueFlow, _FalseFlow, Rs, Rd) ->
+    error_response({R0, R1}, Rs, Rd);
+decision_test_fn({halt, Code}, _TestFn, _TrueFlow, _FalseFlow, Rs, Rd) ->
+    respond(Code, Rs, Rd);
+decision_test_fn(Test,TestFn,TrueFlow,FalseFlow, Rs, Rd) ->
+    case TestFn(Test) of
+        true -> decision_flow(TrueFlow, Test, Rs, Rd);
+        false -> decision_flow(FalseFlow, Test, Rs, Rd)
+    end.
+    
 decision_flow(X, TestResult, Rs, Rd) when is_integer(X) ->
     if X >= 500 -> error_response(X, TestResult, Rs, Rd);
        true -> respond(X, Rs, Rd)
@@ -297,8 +312,10 @@ decision(v3g9, Rs, Rd) ->
     decision_test(get_header_val("if-match", Rd), "*", v3h10, v3g11, Rs, Rd);
 %% "ETag in If-Match"
 decision(v3g11, Rs, Rd) ->
-    ReqETag = webmachine_util:unquote_header(get_header_val("if-match", Rd)),
-    decision_test(resource_call(generate_etag, Rs, Rd), ReqETag, v3h10, 412);
+    ETags = webmachine_util:split_quoted_strings(get_header_val("if-match", Rd)),
+    decision_test_fn(resource_call(generate_etag, Rs, Rd),
+                     fun(ETag) -> lists:member(ETag, ETags) end,
+                     v3h10, 412);
 %% "If-Match: * exists"
 decision(v3h7, Rs, Rd) ->
     decision_test(get_header_val("if-match", Rd), "*", 412, v3i7, Rs, Rd);
@@ -360,8 +377,13 @@ decision(v3k7, Rs, Rd) ->
     decision_test(resource_call(previously_existed, Rs, Rd), true, v3k5, v3l7);
 %% "Etag in if-none-match?"
 decision(v3k13, Rs, Rd) ->
-    ReqETag = webmachine_util:unquote_header(get_header_val("if-none-match", Rd)),
-    decision_test(resource_call(generate_etag, Rs, Rd), ReqETag, v3j18, v3l13);
+    ETags = webmachine_util:split_quoted_strings(get_header_val("if-none-match", Rd)),
+    decision_test_fn(resource_call(generate_etag, Rs, Rd),
+                     %% Membership test is a little counter-intuitive here; if the
+                     %% provided ETag is a member, we follow the error case out
+                     %% via v3j18.
+                     fun(ETag) -> lists:member(ETag, ETags) end,
+                     v3j18, v3l13);
 %% "Moved temporarily?"
 decision(v3l5, Rs, Rd) ->
     {MovedTemporarily, Rs1, Rd1} = resource_call(moved_temporarily, Rs, Rd),
@@ -431,8 +453,24 @@ decision(v3n11, Rs, Rd) ->
                         false -> 
                             error_response("create_path not a string", Rs2, Rd2);
                         true ->
-                            RdPath = wrq:set_disp_path(NewPath, Rd2),
-                            {Res, Rs3, Rd3} = accept_helper(Rs2, RdPath),
+                            {BaseUri0, Rs3, Rd3} = resource_call(base_uri, Rs2, Rd2),
+                            BaseUri = case BaseUri0 of
+                                            undefined -> 
+                                                wrq:base_uri(Rd2);
+                                            Any ->
+                                                case [lists:last(Any)] of
+                                                    "/" -> lists:sublist(Any, erlang:length(Any) - 1);
+                                                    _ -> Any
+                                                 end
+                                        end,
+                            FullPath = filename:join(["/", wrq:path(Rd3), NewPath]),
+                            RdPath = wrq:set_disp_path(FullPath, Rd3),
+                            RdLoc = case wrq:get_resp_header("Location", RdPath) of
+                                undefined -> wrq:set_resp_header("Location", BaseUri ++ FullPath, RdPath);
+                                _ -> RdPath
+                            end,
+
+                            {Res, Rs3, Rd3} = accept_helper(Rs2, RdLoc),
                             case Res of
                                 {respond, Code} -> respond(Code, Rs3, Rd3);
                                 {halt, Code} -> respond(Code, Rs3, Rd3);

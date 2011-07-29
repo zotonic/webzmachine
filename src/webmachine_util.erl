@@ -23,18 +23,25 @@
 -export([choose_media_type/2]).
 -export([choose_charset/2]).
 -export([choose_encoding/2]).
--export([unquote_header/1]).
 -export([now_diff_milliseconds/2]).
--export([media_type_to_detail/1]).
--export([test/0]).
+-export([media_type_to_detail/1,
+         quoted_string/1,
+         split_quoted_strings/1]).
+
+-ifdef(TEST).
+-ifdef(EQC).
+-include_lib("eqc/include/eqc.hrl").
+-endif.
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 convert_request_date(Date) ->
     try 
-	case httpd_util:convert_request_date(Date) of
-	    ReqDate -> ReqDate
-	end
+        case httpd_util:convert_request_date(Date) of
+            ReqDate -> ReqDate
+        end
     catch
-	error:_ -> bad_date
+        error:_ -> bad_date
     end.
 
 %% returns true if D1 > D2
@@ -47,46 +54,46 @@ compare_ims_dates(D1, D2) ->
 %% @doc  Guess the mime type of a file by the extension of its filename.
 guess_mime(File) ->
     case filename:extension(File) of
-	".html" ->
-	    "text/html";
-	".xhtml" ->
-	    "application/xhtml+xml";
-	".xml" ->
-	    "application/xml";
-	".css" ->
-	    "text/css";
-	".js" ->
-	    "application/x-javascript";
-	".jpg" ->
-	    "image/jpeg";
-	".jpeg" ->
-	    "image/jpeg";
-	".gif" ->
-	    "image/gif";
-	".png" ->
-	    "image/png";
-	".ico" ->
-	    "image/x-icon";
-	".swf" ->
-	    "application/x-shockwave-flash";
-	".zip" ->
-	    "application/zip";
-	".bz2" ->
-	    "application/x-bzip2";
-	".gz" ->
-	    "application/x-gzip";
-	".tar" ->
-	    "application/x-tar";
-	".tgz" ->
-	    "application/x-gzip";
+        ".html" ->
+            "text/html";
+        ".xhtml" ->
+            "application/xhtml+xml";
+        ".xml" ->
+            "application/xml";
+        ".css" ->
+            "text/css";
+        ".js" ->
+            "application/x-javascript";
+        ".jpg" ->
+            "image/jpeg";
+        ".jpeg" ->
+            "image/jpeg";
+        ".gif" ->
+            "image/gif";
+        ".png" ->
+            "image/png";
+        ".ico" ->
+            "image/x-icon";
+        ".swf" ->
+            "application/x-shockwave-flash";
+        ".zip" ->
+            "application/zip";
+        ".bz2" ->
+            "application/x-bzip2";
+        ".gz" ->
+            "application/x-gzip";
+        ".tar" ->
+            "application/x-tar";
+        ".tgz" ->
+            "application/x-gzip";
         ".htc" ->
             "text/x-component";
-	".manifest" ->
-	    "text/cache-manifest";
+        ".manifest" ->
+            "text/cache-manifest";
         ".svg" ->
             "image/svg+xml";
-	_ ->
-	    "text/plain"
+        _ ->
+            "text/plain"
     end.
 
 choose_media_type(Provided,AcceptHead) ->
@@ -105,59 +112,61 @@ choose_media_type1(_Provided,[]) ->
 choose_media_type1(Provided,[H|T]) ->
     {_Pri,Type,Params} = H,
     case media_match({Type,Params}, Provided) of
-	[] -> choose_media_type1(Provided,T);
-	[{CT_T,CT_P}|_] -> format_content_type(CT_T,CT_P)
+        [] -> choose_media_type1(Provided,T);
+        [{CT_T,CT_P}|_] -> format_content_type(CT_T,CT_P)
     end.
 
 media_match(_,[]) -> [];
 media_match({"*/*",[]},[H|_]) -> [H];
 media_match({Type,Params},Provided) ->
     [{T1,P1} || {T1,P1} <- Provided,
-		media_type_match(Type,T1), media_params_match(Params,P1)].
+                media_type_match(Type,T1), media_params_match(Params,P1)].
 media_type_match(Req,Prov) ->
     case Req of
-	"*" -> % might as well not break for lame (Gomez) clients
-	    true;
-	"*/*" ->
-	    true;
-	Prov ->
-	    true;
-	_ ->
-	    [R1|R2] = string:tokens(Req,"/"),
-	    [P1,_P2] = string:tokens(Prov,"/"),
-	    case R2 of
-		["*"] ->
-		    case R1 of
-			P1 -> true;
-			_ -> false
-		    end;
-		_ -> false
-	    end
+        "*" -> % might as well not break for lame (Gomez) clients
+            true;
+        "*/*" ->
+            true;
+        Prov ->
+            true;
+        _ ->
+            [R1|R2] = string:tokens(Req,"/"),
+            [P1,_P2] = string:tokens(Prov,"/"),
+            case R2 of
+                ["*"] ->
+                    case R1 of
+                        P1 -> true;
+                        _ -> false
+                    end;
+                _ -> false
+            end
     end.
 media_params_match(Req,Prov) ->
-    lists:sort(Req) =:= lists:sort(Prov).	    
+    lists:sort(Req) =:= lists:sort(Prov).
 
 prioritize_media(TyParam) ->
     {Type, Params} = TyParam,
     prioritize_media(Type,Params,[]).    
 prioritize_media(Type,Params,Acc) ->
     case Params of
-	[] ->
-	    {1, Type, Acc};
-	_ ->
-	    [{Tok,Val}|Rest] = Params,
-	    case Tok of
-		"q" ->
-		    QVal = case Val of
-			"1" ->
-			    1;
-			[$.|_] -> list_to_float([$0|Val]);
-			_ -> list_to_float(Val)
-		    end,
-		    {QVal, Type, Rest ++ Acc};
-		_ ->
-		    prioritize_media(Type,Rest,[{Tok,Val}|Acc])
-	    end
+        [] ->
+            {1, Type, Acc};
+        _ ->
+            [{Tok,Val}|Rest] = Params,
+            case Tok of
+                "q" ->
+                    QVal = case Val of
+                               "1" ->
+                                   1;
+                               [$.|_] ->
+                                   %% handle strange FeedBurner Accept
+                                   list_to_float([$0|Val]); 
+                               _ -> list_to_float(Val)
+                           end,
+                    {QVal, Type, Rest ++ Acc};
+                _ ->
+                    prioritize_media(Type,Rest,[{Tok,Val}|Acc])
+            end
     end.
 
 media_type_to_detail(MType) ->
@@ -255,7 +264,9 @@ build_conneg_list([Acc|AccRest], Result) ->
             case PrioStr of
                 "0" -> {0.0, Choice};
                 "1" -> {1.0, Choice};
-                [$.|_] -> {list_to_float([$0|PrioStr]), Choice};
+                [$.|_] ->
+                    %% handle strange FeedBurner Accept
+                    {list_to_float([$0|PrioStr]), Choice};
                 _ -> {list_to_float(PrioStr), Choice}
             end;
         {Choice} ->
@@ -263,19 +274,41 @@ build_conneg_list([Acc|AccRest], Result) ->
     end,
     build_conneg_list(AccRest,[Pair|Result]).
 
-% (unquote_header copied from mochiweb_util since they don't export it)
-unquote_header("\"" ++ Rest) ->
-    unquote_header(Rest, []);
-unquote_header(S) ->
-    S.
-unquote_header("", Acc) ->
+
+quoted_string([$" | _Rest] = Str) ->
+    Str;
+quoted_string(Str) ->
+    escape_quotes(Str, [$"]).                % Initialize Acc with opening quote
+
+escape_quotes([], Acc) ->
+    lists:reverse([$" | Acc]);               % Append final quote
+escape_quotes([$\\, Char | Rest], Acc) ->
+    escape_quotes(Rest, [Char, $\\ | Acc]);  % Any quoted char should be skipped
+escape_quotes([$" | Rest], Acc) ->
+    escape_quotes(Rest, [$", $\\ | Acc]);    % Unquoted quotes should be escaped
+escape_quotes([Char | Rest], Acc) ->
+    escape_quotes(Rest, [Char | Acc]).
+
+split_quoted_strings(Str) ->
+    split_quoted_strings(Str, []).
+
+split_quoted_strings([], Acc) ->
     lists:reverse(Acc);
-unquote_header("\"", Acc) ->
-    lists:reverse(Acc);
-unquote_header([$\\, C | Rest], Acc) ->
-    unquote_header(Rest, [C | Acc]);
-unquote_header([C | Rest], Acc) ->
-    unquote_header(Rest, [C | Acc]).
+split_quoted_strings([$" | Rest], Acc) ->
+    {Str, Cont} = unescape_quoted_string(Rest, []),
+    split_quoted_strings(Cont, [Str | Acc]);
+split_quoted_strings([_Skip | Rest], Acc) ->
+    split_quoted_strings(Rest, Acc).
+
+unescape_quoted_string([], Acc) ->
+    {lists:reverse(Acc), []};
+unescape_quoted_string([$\\, Char | Rest], Acc) -> % Any quoted char should be unquoted
+    unescape_quoted_string(Rest, [Char | Acc]);
+unescape_quoted_string([$" | Rest], Acc) ->        % Quote indicates end of this string
+    {lists:reverse(Acc), Rest};
+unescape_quoted_string([Char | Rest], Acc) ->
+    unescape_quoted_string(Rest, [Char | Acc]).
+
 
 %% @type now() = {MegaSecs, Secs, MicroSecs}
 
@@ -290,14 +323,110 @@ now_diff_milliseconds({M,S,U}, {M,S1,U1}) ->
 now_diff_milliseconds({M,S,U}, {M1,S1,U1}) ->
     ((M-M1)*1000000+(S-S1))*1000 + ((U-U1) div 1000).
 
-test() ->
-    test_choose_media_type(),
-    ok.
+%%
+%% TEST
+%%
+-ifdef(TEST).
 
-test_choose_media_type() ->
+choose_media_type_test() ->
     Provided = "text/html",
     ShouldMatch = ["*", "*/*", "text/*", "text/html"],
     WantNone = ["foo", "text/xml", "application/*", "foo/bar/baz"],
-    [ Provided = choose_media_type([Provided], I) || I <- ShouldMatch ],
-    [ none = choose_media_type([Provided], I) || I <- WantNone ],
-    ok.
+    [ ?assertEqual(Provided, choose_media_type([Provided], I))
+      || I <- ShouldMatch ],
+    [ ?assertEqual(none, choose_media_type([Provided], I))
+      || I <- WantNone ].
+
+choose_media_type_qval_test() ->
+    Provided = ["text/html", "image/jpeg"],
+    HtmlMatch = ["image/jpeg;q=0.5, text/html",
+                 "text/html, image/jpeg; q=0.5",
+                 "text/*; q=0.8, image/*;q=0.7",
+                 "text/*;q=.8, image/*;q=.7"], %% strange FeedBurner format
+    JpgMatch = ["image/*;q=1, text/html;q=0.9",
+                "image/png, image/*;q=0.3"],
+    [ ?assertEqual("text/html", choose_media_type(Provided, I))
+      || I <- HtmlMatch ],
+    [ ?assertEqual("image/jpeg", choose_media_type(Provided, I))
+      || I <- JpgMatch ].
+
+convert_request_date_test() ->
+    ?assertMatch({{_,_,_},{_,_,_}},
+                 convert_request_date("Wed, 30 Dec 2009 14:39:02 GMT")),
+    ?assertMatch(bad_date,
+                 convert_request_date(<<"does not handle binaries">>)).
+
+compare_ims_dates_test() ->
+    Late = {{2009,12,30},{14,39,02}},
+    Early = {{2009,12,30},{13,39,02}},
+    ?assertEqual(true, compare_ims_dates(Late, Early)),
+    ?assertEqual(false, compare_ims_dates(Early, Late)).
+
+guess_mime_test() ->
+    TextTypes = [".html",".css",".htc",".manifest",".txt"],
+    AppTypes = [".xhtml",".xml",".js",".swf",".zip",".bz2",
+                ".gz",".tar",".tgz"],
+    ImgTypes = [".jpg",".jpeg",".gif",".png",".ico",".svg"],
+    ?assertEqual([], [ T || T <- TextTypes,
+                            1 /= string:str(guess_mime(T),"text/") ]),
+    ?assertEqual([], [ T || T <- AppTypes,
+                            1 /= string:str(guess_mime(T),"application/") ]),
+    ?assertEqual([], [ T || T <- ImgTypes,
+                            1 /= string:str(guess_mime(T),"image/") ]).
+
+
+now_diff_milliseconds_test() ->
+    Late = {10, 10, 10},
+    Early1 = {10, 9, 9},
+    Early2 = {9, 9, 9},
+    ?assertEqual(1000, now_diff_milliseconds(Late, Early1)),
+    ?assertEqual(1000001000, now_diff_milliseconds(Late, Early2)).
+
+-ifdef(EQC).
+
+-define(QC_OUT(P),
+        eqc:on_output(fun(Str, Args) -> io:format(user, Str, Args) end, P)).
+
+prop_quoted_string() ->
+    ?FORALL(String0, non_empty(list(oneof([char(), $", [$\\, char()]]))),
+            begin
+                String = lists:flatten(String0),
+
+                Quoted = quoted_string(String),
+                case String of
+                    [$" | _] ->
+                        ?assertEqual(String, Quoted),
+                        true;
+                    _ ->
+                        %% Properties:
+                        %% * strings must begin/end with quote
+                        %% * All other quotes should be escaped
+                        ?assertEqual($", hd(Quoted)),
+                        ?assertEqual($", lists:last(Quoted)),
+                        Partial = lists:reverse(tl(lists:reverse(tl(Quoted)))),
+                        case check_quote(Partial) of
+                            true ->
+                                true;
+                            false ->
+                                io:format(user, "----\n", []),
+                                io:format(user, "In: ~p\n", [[integer_to_list(C) || C <- String]]),
+                                io:format(user, "Out: ~p\n", [[integer_to_list(C) || C <- Quoted]]),
+                                false
+                        end
+                end
+            end).
+
+check_quote([]) ->
+    true;
+check_quote([$\\, _Any | Rest]) ->
+    check_quote(Rest);
+check_quote([$" | _Rest]) ->
+    false;
+check_quote([_Any | Rest]) ->
+    check_quote(Rest).
+
+prop_quoted_string_test() ->
+    ?assert(eqc:quickcheck(?QC_OUT(prop_quoted_string()))).
+
+-endif. % EQC
+-endif. % TEST

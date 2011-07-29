@@ -16,8 +16,8 @@
 -module(wrq).
 -author('Justin Sheehy <justin@basho.com>').
 
--export([create/5,load_dispatch_data/7]).
--export([method/1,version/1,peer/1,disp_path/1,path/1,raw_path/1,path_info/1,
+-export([create/6,load_dispatch_data/7]).
+-export([method/1,scheme/1, base_uri/1, version/1,peer/1,disp_path/1,path/1,raw_path/1,path_info/1,
          response_code/1,req_cookie/1,req_qs/1,req_headers/1,req_body/1,
          stream_req_body/2,resp_redirect/1,resp_headers/1,resp_body/1,
          app_root/1,path_tokens/1, host_tokens/1, port/1, is_ssl/1]).
@@ -32,10 +32,10 @@
 % @type reqdata(). The opaque data type used for req/resp data structures.
 -include_lib("include/wm_reqdata.hrl").
 
-create(Socket,Method,Version,RawPath,Headers) ->
+create(Socket,Method,Scheme,Version,RawPath,Headers) ->
     create(#wm_reqdata{
                 socket=Socket,
-                method=Method,version=Version,
+                method=Method,scheme=Scheme,version=Version,
                 raw_path=RawPath,req_headers=prepare_headers(Headers),
                 path="defined_in_create",
                 req_cookie=defined_in_create,
@@ -67,6 +67,14 @@ load_dispatch_data(PathInfo, HostTokens, Port, PathTokens, AppRoot,
                   app_root=AppRoot,disp_path=DispPath}.
 
 method(_RD = #wm_reqdata{method=Method}) -> Method.
+
+scheme(_RD = #wm_reqdata{scheme=Scheme}) -> Scheme.
+
+base_uri(_RD = #wm_reqdata{scheme=Scheme, host_tokens=HostTokens, port=Port}) ->
+    Scheme = erlang:atom_to_list(Scheme),
+    Host = string:join(HostTokens, "."),    
+    PortString = port_string(Scheme, Port),
+    Scheme ++ "://" ++ Host ++ PortString ++ "/".
 
 version(_RD = #wm_reqdata{version=Version})
   when is_tuple(Version), size(Version) == 2,
@@ -223,3 +231,19 @@ prepare_header_value({array, L}) ->
     mochiweb_util:join(lists:reverse(L), ", ");
 prepare_header_value(V) ->
     V.
+
+
+port_string(Scheme, Port) ->
+    case Scheme of
+        http ->
+            case Port of
+                80 -> "";
+                _ -> ":" ++ erlang:integer_to_list(Port)
+            end;
+        https ->
+            case Port of
+                443 -> "";
+                _ -> ":" ++ erlang:integer_to_list(Port)
+            end;
+        _ -> ":" ++ erlang:integer_to_list(Port)
+    end.
