@@ -76,7 +76,6 @@
 -include("webmachine_logger.hrl").
 -include_lib("include/wm_reqdata.hrl").
 
--define(WMVSN, "1.8.1 (compat)").
 -define(IDLE_TIMEOUT, infinity).
 
 get_peer(ReqData) ->
@@ -561,7 +560,7 @@ make_headers(Code, Transfer, Length, RD) ->
                     LengthHeaders
             end
     end,
-    ServerHeader = "MochiWeb/1.1 WebZMachine/" ++ ?WMVSN, % ++ " Zotonic/" ++ ?ZOTONIC_VERSION,
+    {ok, ServerHeader} = application:get_env(webzmachine, server_header),
     WithSrv = mochiweb_headers:enter("Server", ServerHeader, Hdrs0),
     Hdrs = case mochiweb_headers:get_value("date", WithSrv) of
 	undefined ->
