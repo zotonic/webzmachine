@@ -22,15 +22,12 @@
 -include("webmachine_logger.hrl").
 -include_lib("include/wm_reqdata.hrl").
 
--define(WMVSN, "1.8.1 (compat)").
-
 
 %% @spec start() -> ok
 %% @doc Start the webmachine server.
 start() ->
     webmachine_deps:ensure(),
-    ServerHeader = "MochiWeb/1.1 WebZMachine/" ++ ?WMVSN,
-    application:set_env(webzmachine, server_header, ServerHeader),
+    application:set_env(webzmachine, server_header, webmachine_request:server_header()),
     application:start(crypto),
     application:start(webzmachine).
 

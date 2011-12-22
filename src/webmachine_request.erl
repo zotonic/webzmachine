@@ -21,10 +21,13 @@
 -author('Justin Sheehy <justin@basho.com>').
 -author('Andy Gross <andy@basho.com>').
 
+-define(WMVSN, "1.8.1 (compat)").
+
 -export([get_peer/1]). % used in initialization
 
 % actual interface for resource functions
 -export([
+     server_header/0,
      socket/1,
      method/1,
      version/1,
@@ -577,6 +580,9 @@ make_headers(Code, Transfer, Length, RD) ->
 is_chunked_transfer(HttpVersion, chunked) when HttpVersion > {1,0} -> true;
 is_chunked_transfer(_, _) -> false.
 
+
+server_header() ->
+    "MochiWeb/1.1 WebZMachine/" ++ ?WMVSN.
 
 socket(ReqData) -> ReqData#wm_reqdata.socket.
 
