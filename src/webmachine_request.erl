@@ -64,7 +64,7 @@
      get_metadata/2,
      get_path_info/1,
      get_path_info/2,
-     load_dispatch_data/7,
+     load_dispatch_data/8,
      get_path_tokens/1,
      get_app_root/1,
      parse_cookie/1,
@@ -707,10 +707,10 @@ get_path_tokens(ReqData) -> path_tokens(ReqData).
 app_root(ReqData) -> wrq:app_root(ReqData).
 get_app_root(ReqData) -> app_root(ReqData).
 
-load_dispatch_data(Bindings, HostTokens, Port, PathTokens, AppRoot, DispPath, ReqData) ->
+load_dispatch_data(Bindings, HostId, HostTokens, Port, PathTokens, AppRoot, DispPath, ReqData) ->
     PathInfo = dict:from_list(Bindings),
     RD1 = wrq:load_dispatch_data(
-                        PathInfo,HostTokens,Port,PathTokens,AppRoot,
+                        PathInfo,HostId,HostTokens,Port,PathTokens,AppRoot,
                         DispPath,ReqData),
     {ok, RD1}.
 
