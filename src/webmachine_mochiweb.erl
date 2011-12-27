@@ -74,7 +74,7 @@ init_reqdata(MochiReq) ->
 loop(MochiReq, LoopOpts) ->
     reset_process_dictionary(),
 
-    statz:incr({zotonic, wezbmachine, requests}),
+    statz:incr({zotonic, webzmachine, requests}),
 
     ReqData = init_reqdata(MochiReq),
     Host = case host_headers(ReqData) of
