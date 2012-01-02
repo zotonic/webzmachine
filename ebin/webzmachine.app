@@ -19,7 +19,8 @@
     webmachine_util,
     webmachine_id,
     wrq,
-    wmtrace_resource
+    wmtrace_resource,
+    z_logger
   ]},
   {registered, []},
   {mod, {webmachine_app, []}},
