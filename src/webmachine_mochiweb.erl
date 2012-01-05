@@ -140,8 +140,8 @@ loop(MochiReq, LoopOpts) ->
                         erlang:put(mochiweb_request_force_close, true)
                 end
             catch
-                error:_ -> 
-                    ?WM_DBG({error, erlang:get_stacktrace()}),
+                error:E ->
+                    ?WM_DBG({error, E, erlang:get_stacktrace()}),
                     {ok,RD3} = webmachine_request:send_response(500, RD2),
                     Resource:stop(RD3),
                     case application:get_env(webzmachine, webmachine_logger_module) of
