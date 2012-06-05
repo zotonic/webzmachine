@@ -159,10 +159,19 @@ send_writer_body(Socket, IsChunked, {Encoder, Charsetter, BodyFun}) ->
     send_chunk(Socket, IsChunked, <<>>),
     get(bytes_written).
 
+send_sendfile_body(Socket, IsChunked, {RawFile, Offset, Size}) when
+      is_integer(Offset), is_integer(Size) ->
+    send_chunk(Socket, IsChunked, {RawFile, Offset, Size}),
+    send_chunk(Socket, IsChunked, <<>>),
+    Size;
+
+send_sendfile_body(Socket, _IsChunked, RawFile) ->
+    Size = iodevice_size(RawFile),
+    send_sendfile_body(Socket, false, {RawFile, 0, Size}).
 
 %% @todo Distinguish between HTTP/1.0 and 1.1
 %%       HTTP/1.0 should not add the size (and transfer-encoding: chunked)
-send_chunk(Socket, true, Data) ->
+send_chunk(Socket, true, Data) when is_list(Data); is_binary(Data) ->
     Size = iolist_size(Data),
     send(Socket, mochihex:to_hex(Size)),
     send(Socket, <<"\r\n">>),
@@ -171,11 +180,33 @@ send_chunk(Socket, true, Data) ->
     Size;
 send_chunk(_Socket, false, <<>>) ->
     0;
-send_chunk(Socket, false, Data) ->
+send_chunk(Socket, false, Data) when is_list(Data); is_binary(Data) ->
     Size = iolist_size(Data),
     send(Socket, Data),
-    Size.
+    Size;
 
+send_chunk(Socket, true, {RawFile, Offset, Size}) ->
+    send(Socket, mochihex:to_hex(Size)),
+    send(Socket, <<"\r\n">>),
+    sendfile_chunk(RawFile, Socket, Offset, Size, []),
+    send(Socket, <<"\r\n">>),
+    Size;
+send_chunk(_Socket, false, {_RawFile, _Offset, 0}) ->
+    0;
+send_chunk(Socket, false, {RawFile, Offset, Size}) ->
+    sendfile_chunk(RawFile, Socket, Offset, Size, []),
+    Size.
+		    
+sendfile_chunk(RawFile, Socket, Offset, Count, Opts) ->
+    error_logger:info_msg("sendfile_chunk(~p ~p ~p ~p ~p)", [RawFile, Socket, Offset, Count, Opts]),
+    {ok, BytesSent} = file:sendfile(RawFile, Socket, Offset, Count, Opts),
+    BytesLeft = Count - BytesSent,
+    case BytesLeft of
+	0 ->
+	    {ok, Count};
+	BytesS when BytesS > 0 ->
+	    sendfile_chunk(RawFile, Socket, Offset + BytesSent, BytesLeft, Opts)
+    end.
 
 send_response(ReqData) ->
 	{Reply, RD1} = case ReqData#wm_reqdata.response_code of
@@ -211,6 +242,9 @@ send_response(Code, ReqData) ->
         {stream, StreamBody} -> {{stream, StreamBody}, chunked, undefined};
         {writer, WriteBody} -> {{writer, WriteBody}, chunked, undefined};
         {stream, Size, Fun} -> {{stream, Fun(0, Size-1)}, chunked, undefined};
+	{sendfile, {_RawFile, Offset, Size}}=SFD 
+	   when is_integer(Offset), is_integer(Size) -> {SFD, chunked, undefined};
+	{sendfile, _RawFile}=SFD -> {SFD, chunked, undefined};
         _ -> {Body0, undefined, iolist_size([Body0])}
     end,
     send(ReqData#wm_reqdata.socket,
@@ -226,6 +260,8 @@ send_response(Code, ReqData) ->
                 send_stream_body(ReqData#wm_reqdata.socket, is_chunked_transfer(wrq:version(ReqData), Transfer), Body2);
             {writer, Body2} ->
                 send_writer_body(ReqData#wm_reqdata.socket, is_chunked_transfer(wrq:version(ReqData), Transfer), Body2);
+	    {sendfile, Body2} ->
+		send_sendfile_body(ReqData#wm_reqdata.socket, is_chunked_transfer(wrq:version(ReqData), Transfer), Body2);
             _ ->
                 send(ReqData#wm_reqdata.socket, Body),
                 Length
@@ -345,7 +381,8 @@ get_range(ReqData) ->
     end.
 
 
-range_parts(_RD=#wm_reqdata{resp_body={file, IoDevice}}, Ranges) ->
+range_parts(_RD=#wm_reqdata{resp_body={FileType, IoDevice}}, Ranges) when
+      FileType =:= file; FileType =:= sendfile ->
     Size = iodevice_size(IoDevice),
     F = fun (Spec, Acc) ->
                 case range_skip_length(Spec, Size) of
@@ -356,11 +393,18 @@ range_parts(_RD=#wm_reqdata{resp_body={file, IoDevice}}, Ranges) ->
                 end
         end,
     LocNums = lists:foldr(F, [], Ranges),
-    {ok, Data} = file:pread(IoDevice, LocNums),
-    Bodies = lists:zipwith(fun ({Skip, Length}, PartialBody) ->
-                                   {Skip, Skip + Length - 1, PartialBody}
-                           end,
-                           LocNums, Data),
+    Bodies = case FileType of
+		 file ->
+		     {ok, Data} = file:pread(IoDevice, LocNums),
+		     lists:zipwith(fun ({Skip, Length}, PartialBody) ->
+					   {Skip, Skip + Length - 1, PartialBody}
+				   end,
+				   LocNums, Data);
+		 sendfile ->
+		     lists:map(fun({Skip, Length}) ->
+				       {Skip, Skip + Length - 1, {sendfile, {IoDevice, Skip, Length}}}
+			       end, LocNums)
+	     end,
     {Bodies, Size};
 
 range_parts(RD=#wm_reqdata{resp_body={stream, {Hunk,Next}}}, Ranges) ->
