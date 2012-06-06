@@ -673,6 +673,8 @@ encode_body(Body, Rs, Rd) ->
             {{writer, {Encoder, Charsetter, BodyFun}}, Rs2, Rd2};
         {writer, Size, BodyFun} ->
             {{writer, Size, {Encoder, Charsetter, BodyFun}}, Rs2, Rd2};
+	{sendfile, Params} ->
+	    {{sendfile, Params}, Rs2, Rd2}; %% For now, do not support encodings for sendfile
         _ ->
             {Encoder(Charsetter(to_binary(Body))), Rs2, Rd2}
     end.
