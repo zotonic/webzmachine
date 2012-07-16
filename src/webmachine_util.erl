@@ -260,7 +260,7 @@ build_conneg_list([], Result) -> lists:reverse(lists:sort(Result));
 build_conneg_list([Acc|AccRest], Result) ->
     XPair = list_to_tuple([string:strip(X) || X <- string:tokens(Acc, ";")]),
     Pair = case XPair of
-        {Choice, "q=" ++ PrioStr} ->
+        {Choice, [Q,$=|PrioStr]} when Q=:=$Q; Q=:=$q ->
             case PrioStr of
                 "0" -> {0.0, Choice};
                 "1" -> {1.0, Choice};
