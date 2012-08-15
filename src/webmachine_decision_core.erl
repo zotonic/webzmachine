@@ -208,8 +208,8 @@ decision(v3b6_upgrade, Rs, Rd) ->
 				undefined ->
 					decision(v3b6, Rs, Rd);
 				Connection ->
-					case string:strip(string:to_lower(Connection)) of
-						"upgrade" ->
+					case contains_token("upgrade", Connection) of
+						true ->
 							{Choosen, Rs1, Rd1} = choose_upgrade(UpgradeHdr, Rs, Rd),
 							case Choosen of
 								none ->
@@ -218,7 +218,7 @@ decision(v3b6_upgrade, Rs, Rd) ->
 									%% TODO: log the upgrade action
 									{upgrade, UpgradeFunc, Rs1, Rd1}
 							end;
-						_ ->
+						false ->
 							decision(v3b6, Rs, Rd)
 					end
 			end
@@ -746,3 +746,9 @@ variances(Rs, Rd) ->
     {Accept ++ AcceptEncoding ++ AcceptCharset ++ Variances, Rs4, Rd4}.
     
     
+contains_token(Token, HeaderString) ->
+    Tokens = lists:map(fun (T) ->
+                               string:strip(string:to_lower(T))
+                       end,
+                       string:tokens(HeaderString, ",")),
+    lists:member(Token, Tokens).
