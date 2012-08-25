@@ -79,7 +79,14 @@ init([]) ->
     {ok, {{one_for_one, 9, 10}, Processes}}.
     
 init_wmtrace() ->
-    Dir = "priv/wmtrace", %%TODO: move it to config file...
+    Dir = valid_wmtrace_dir(application:get_env(wmtrace_dir)),
     ok = filelib:ensure_dir(filename:join(Dir, "test")),		
     ets:new(?WMTRACE_CONF_TBL, [set, public, named_table]),
     ets:insert(?WMTRACE_CONF_TBL, {trace_dir, Dir}).
+
+valid_wmtrace_dir(undefined) -> filename:join([get_path(), "priv", "wmtrace"]);
+valid_wmtrace_dir({ok, Dir}) when is_list(Dir) -> Dir.
+
+get_path() ->
+    {ok, CWD} = file:get_cwd(),
+    CWD.
