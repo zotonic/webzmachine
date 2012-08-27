@@ -1,8 +1,9 @@
+%% -*- mode: erlang -*-
 {application, webzmachine,
  [{description, "webzmachine"},
   {vsn, "1.8.1"},
-  {modules, [
-    webzmachine,
+  {modules,
+   [webzmachine,
     webmachine_app,
     webmachine_decision_core,
     webmachine_deps,
@@ -19,8 +20,9 @@
     webmachine_util,
     webmachine_id,
     wrq,
-    wmtrace_resource
-  ]},
+    wmtrace_resource,
+    z_logger
+   ]},
   {registered, []},
   {mod, {webmachine_app, []}},
   {env, [{node_id, 1}]},

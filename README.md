@@ -1,6 +1,4 @@
-**NOTE 1** webzmachine depends on z_logger, which we are in the process of splitting from Zotonic.
-
-**NOTE 2** this repository is under heavy editing and unstable.
+**NOTE** this repository is under heavy editing and unstable.
 
 webmachine
 ==========
