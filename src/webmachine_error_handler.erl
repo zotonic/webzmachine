@@ -31,6 +31,10 @@ render_error(Code, ReqData, Reason) ->
         {false,_} -> render_error_body(Code, ReqData, Reason)
     end.
 
+render_error_body(400, ReqData, _Reason) ->
+    ReqData1 = wrq:set_resp_header("Content-Type", "text/html", ReqData),
+    {<<"<HTML><HEAD><TITLE>400 Bad Request</TITLE></HEAD><BODY><H1>Bad Request</H1>The request was invalid.<P><HR><ADDRESS>mochiweb+webmachine web server</ADDRESS></BODY></HTML>">>, ReqData1};
+
 render_error_body(404, ReqData, _Reason) ->
     ReqData1 = wrq:set_resp_header("Content-Type", "text/html", ReqData),
     {<<"<HTML><HEAD><TITLE>404 Not Found</TITLE></HEAD><BODY><H1>Not Found</H1>The requested document was not found on this server.<P><HR><ADDRESS>mochiweb+webmachine web server</ADDRESS></BODY></HTML>">>, ReqData1};
