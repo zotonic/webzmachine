@@ -1,3 +1,7 @@
+This is the zynamo branch of webzmachine.
+It uses statz for statistics gathering.
+
+
 **NOTE 1** webzmachine depends on z_logger, which we are in the process of splitting from Zotonic.
 
 **NOTE 2** this repository is under heavy editing and unstable.
