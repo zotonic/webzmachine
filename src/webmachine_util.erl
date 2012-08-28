@@ -27,6 +27,7 @@
 -export([media_type_to_detail/1,
          quoted_string/1,
          split_quoted_strings/1]).
+-export([to_console/2]).
 
 -ifdef(TEST).
 -ifdef(EQC).
@@ -322,6 +323,21 @@ now_diff_milliseconds({M,S,U}, {M,S1,U1}) ->
     ((S-S1) * 1000) + ((U-U1) div 1000);
 now_diff_milliseconds({M,S,U}, {M1,S1,U1}) ->
     ((M-M1)*1000000+(S-S1))*1000 + ((U-U1) div 1000).
+
+%% @doc Use application config file to determine if any output to console is allowed.
+%% @spec is_silent_console() -> boolean()
+is_silent_console() -> valid_silent_console(application:get_env(silent_console)).
+
+valid_silent_console(undefined) -> true; % No console output allowed by default
+valid_silent_console({ok, Silent}) when is_boolean(Silent) -> Silent.
+
+%% @doc Write a message to console if allowed.
+%% @spec to_console(Format, Data) -> ok
+to_console(Format, Data) when is_list(Format), is_list(Data) ->
+    to_console(Format, Data, is_silent_console()).
+
+to_console(_Format, _Data, true) -> ok;
+to_console(Format, Data, false) -> io:format(Format, Data).
 
 %%
 %% TEST
