@@ -73,9 +73,6 @@ init_reqdata(MochiReq) ->
 
 loop(MochiReq, LoopOpts) ->
     reset_process_dictionary(),
-
-    statz:incr({zotonic, webzmachine, requests}),
-
     ReqData = init_reqdata(MochiReq),
     Host = case host_headers(ReqData) of
                [H|_] -> H;
@@ -90,27 +87,21 @@ loop(MochiReq, LoopOpts) ->
                                       Dispatcher:dispatch(Host, Path, ReqData)                                      
                               end,
     case Dispatch of
-        {no_dispatch_match, HostId, _UnmatchedPathTokens} ->
-            statz:incr({HostId, webzmachine, requests}),
+        {no_dispatch_match, _UnmatchedHost, _UnmatchedPathTokens} ->
             {ok, ErrorHandler} = application:get_env(webzmachine, error_handler),
             {ErrorHTML,ReqState1} = ErrorHandler:render_error(404, ReqDispatch, {none, none, []}),
             ReqState2 = webmachine_request:append_to_response_body(ErrorHTML, ReqState1),
-            EndTime = now(),
             {ok,ReqState3} = webmachine_request:send_response(404, ReqState2),
             LogData = webmachine_request:log_data(ReqState3),
-
-            statz:msec(LogData#wm_log_data.start_time, EndTime, {HostId, webzmachine, duration}),
-            statz:msec(LogData#wm_log_data.start_time, EndTime, {zotonic, webzmachine, duration}),
-            statz:update(LogData#wm_log_data.response_length, {HostId, webzmachine, out}),
-            statz:update(LogData#wm_log_data.response_length, {zotonic, webzmachine, out}),
-
-            webmachine_decision_core:do_log(LogData#wm_log_data{end_time=EndTime});
-
-        {Mod, ModOpts, HostId, HostTokens, Port, PathTokens, Bindings, AppRoot, StringPath} ->
-            statz:incr({webmachine, HostId, requests}),
+            case application:get_env(webzmachine,webmachine_logger_module) of
+                {ok, LogModule} ->
+                    spawn(LogModule, log_access, [LogData]);
+                _ -> nop
+            end;
+        {Mod, ModOpts, HostTokens, Port, PathTokens, Bindings, AppRoot, StringPath} ->
             BootstrapResource = webmachine_resource:new(x,x,x,x),
             {ok, Resource} = BootstrapResource:wrap(ReqData, Mod, ModOpts),
-            {ok,RD1} = webmachine_request:load_dispatch_data(Bindings,HostId,HostTokens,Port,PathTokens,AppRoot,StringPath,ReqDispatch),
+            {ok,RD1} = webmachine_request:load_dispatch_data(Bindings,HostTokens,Port,PathTokens,AppRoot,StringPath,ReqDispatch),
             {ok,RD2} = webmachine_request:set_metadata('resource_module', Mod, RD1),
             try 
                 case webmachine_decision_core:handle_request(Resource, RD2) of
@@ -118,20 +109,8 @@ loop(MochiReq, LoopOpts) ->
                         EndTime = now(),
                         {_, RdResp} = webmachine_request:send_response(RdFin),
                         RsFin:stop(RdResp),                       
-
                         LogData0 = webmachine_request:log_data(RdResp),
-                        StatzOpts = proplists:get_value(statz, ModOpts, []),
-                        case proplists:get_value(no_duration, StatzOpts) of
-                            true ->
-                                nop;
-                            _ -> 
-                                statz:msec(LogData0#wm_log_data.start_time, EndTime, {HostId, webzmachine, duration}),
-                                statz:msec(LogData0#wm_log_data.start_time, EndTime, {zotonic, webzmachine, duration})
-                        end,
-                        statz:update(LogData0#wm_log_data.response_length, {HostId, webzmachine, out}),
-                        statz:update(LogData0#wm_log_data.response_length, {zotonic, webzmachine, out}),
-
-                        webmachine_decision_core:do_log(LogData0#wm_log_data{resource_module=Mod, end_time=EndTime}),                        
+                        spawn(fun() -> webmachine_decision_core:do_log(LogData0#wm_log_data{resource_module=Mod, end_time=EndTime}) end),                        
                         ok;
                     {upgrade, UpgradeFun, RsFin, RdFin} ->
                         %%TODO: wmtracing 4xx result codes should ignore protocol upgrades? (because the code is 404 by default...)
@@ -140,8 +119,8 @@ loop(MochiReq, LoopOpts) ->
                         erlang:put(mochiweb_request_force_close, true)
                 end
             catch
-                error:E ->
-                    ?WM_DBG({error, E, erlang:get_stacktrace()}),
+                error:_ -> 
+                    ?WM_DBG({error, erlang:get_stacktrace()}),
                     {ok,RD3} = webmachine_request:send_response(500, RD2),
                     Resource:stop(RD3),
                     case application:get_env(webzmachine, webmachine_logger_module) of
@@ -154,7 +133,6 @@ loop(MochiReq, LoopOpts) ->
         handled ->
             nop
     end.
-
 
 get_option(Option, Options) ->
     get_option(Option, Options, undefined).

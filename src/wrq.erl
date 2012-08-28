@@ -16,11 +16,11 @@
 -module(wrq).
 -author('Justin Sheehy <justin@basho.com>').
 
--export([create/6,load_dispatch_data/8]).
+-export([create/6,load_dispatch_data/7]).
 -export([method/1,scheme/1, base_uri/1, version/1,peer/1,disp_path/1,path/1,raw_path/1,path_info/1,
          response_code/1,req_cookie/1,req_qs/1,req_headers/1,req_body/1,
          stream_req_body/2,resp_redirect/1,resp_headers/1,resp_body/1,
-         app_root/1,path_tokens/1, host_tokens/1, host_id/1, port/1, is_ssl/1]).
+         app_root/1,path_tokens/1, host_tokens/1, port/1, is_ssl/1]).
 -export([path_info/2,get_req_header/2,get_req_header_lc/2,do_redirect/2,fresh_resp_headers/2,
          get_resp_header/2,set_resp_header/3,set_resp_headers/2,
          set_disp_path/2,set_req_body/2,set_resp_body/2,set_response_code/2,
@@ -60,9 +60,9 @@ create(RD = #wm_reqdata{raw_path=RawPath}) ->
     ReqQS = mochiweb_util:parse_qs(QueryString),
     RD#wm_reqdata{path=Path,req_cookie=Cookie,req_qs=ReqQS}.
 
-load_dispatch_data(PathInfo, HostId, HostTokens, Port, PathTokens, AppRoot,
+load_dispatch_data(PathInfo, HostTokens, Port, PathTokens, AppRoot,
                    DispPath, RD) ->
-    RD#wm_reqdata{path_info=PathInfo,host_id=HostId, host_tokens=HostTokens,
+    RD#wm_reqdata{path_info=PathInfo,host_tokens=HostTokens,
                   port=Port,path_tokens=PathTokens,
                   app_root=AppRoot,disp_path=DispPath}.
 
@@ -96,8 +96,6 @@ path_info(_RD = #wm_reqdata{path_info=PathInfo}) -> PathInfo. % dict
 path_tokens(_RD = #wm_reqdata{path_tokens=PathT}) -> PathT. % list of strings
 
 host_tokens(_RD = #wm_reqdata{host_tokens=HostT}) -> HostT. % list of strings
-
-host_id(_RD = #wm_reqdata{host_id=HostId}) -> HostId. % atom
 
 port(_RD = #wm_reqdata{port=Port}) -> Port. % integer
 
