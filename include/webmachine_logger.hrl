@@ -2,7 +2,7 @@
 
 -record(wm_log_data, 
 	{req_id :: integer(),
-         resource_module :: atom(),
+	 controller_module :: atom(),
 	 start_time :: tuple(),
 	 method :: atom(),
 	 headers,

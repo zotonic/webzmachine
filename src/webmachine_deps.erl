@@ -15,7 +15,7 @@
 %%    limitations under the License.
 
 %% @doc Ensure that the relatively-installed dependencies are on the code
-%%      loading path, and locate resources relative
+%%      loading path, and locate controllers relative
 %%      to this application's path.
 
 -module(webmachine_deps).

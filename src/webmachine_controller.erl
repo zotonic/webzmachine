@@ -14,7 +14,7 @@
 %%    See the License for the specific language governing permissions and
 %%    limitations under the License.
 
--module(webmachine_resource, [R_Mod, R_ModState, R_ModExports, R_Trace]).
+-module(webmachine_controller, [R_Mod, R_ModState, R_ModExports, R_Trace]).
 -author('Justin Sheehy <justin@basho.com>').
 -author('Andy Gross <andy@basho.com>').
 -export([wrap/3]).
@@ -141,7 +141,7 @@ wrap(ReqData, Mod, Args) ->
               end,
     case ToTrace of
         false ->
-            {ok, webmachine_resource:new(Mod, ModState, [ F || {F,_} <- Mod:module_info(exports) ], false)};
+            {ok, webmachine_controller:new(Mod, ModState, [ F || {F,_} <- Mod:module_info(exports) ], false)};
         {true, Eagerness} ->
             {ok, LoggerProc} = start_log_proc(Dir, Mod, Eagerness),
             ReqId = (ReqData#wm_reqdata.log_data)#wm_log_data.req_id,        
@@ -149,7 +149,7 @@ wrap(ReqData, Mod, Args) ->
             log_decision(LoggerProc, v3b14),
             log_call(LoggerProc, attempt, Mod, init, Args),
             log_call(LoggerProc, result, Mod, init, {{trace, Dir}, ModState}),
-            {ok, webmachine_resource:new(Mod, ModState, [ F || {F,_} <- Mod:module_info(exports) ], LoggerProc)};
+            {ok, webmachine_controller:new(Mod, ModState, [ F || {F,_} <- Mod:module_info(exports) ], LoggerProc)};
         _ ->
             {stop, bad_init_arg}
     end.
@@ -159,23 +159,23 @@ modstate() ->
 
 do(Fun, ReqData) when is_atom(Fun) ->
     {Reply, ReqData1, NewModState} = handle_wm_call(Fun, ReqData),
-    {Reply, webmachine_resource:new(R_Mod, NewModState, R_ModExports, R_Trace), ReqData1}.
+    {Reply, webmachine_controller:new(R_Mod, NewModState, R_ModExports, R_Trace), ReqData1}.
 
 handle_wm_call(Fun, ReqData) ->
     case lists:member(Fun, R_ModExports) of
         true ->
-            resource_call(Fun, ReqData);
+            controller_call(Fun, ReqData);
         false ->
             case default(Fun) of
                 no_default -> 
-                    resource_call(Fun, ReqData);
+                    controller_call(Fun, ReqData);
                 Default ->
                     log_call(R_Trace, not_exported, R_Mod, Fun, [ReqData, R_ModState]),
                     {Default, ReqData, R_ModState}
             end
     end.
 
-resource_call(F, ReqData) ->
+controller_call(F, ReqData) ->
     log_call(R_Trace, attempt, R_Mod, F, [ReqData, R_ModState]),
     Result = try
                  apply(R_Mod, F, [ReqData, R_ModState])

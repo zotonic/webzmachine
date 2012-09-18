@@ -101,7 +101,7 @@ choose_media_type(Provided,AcceptHead) ->
     % Return the Content-Type we will serve for a request.
     % If there is no acceptable/available match, return the atom "none".
     % AcceptHead is the value of the request's Accept header
-    % Provided is a list of media types the resource can provide.
+    % Provided is a list of media types the controller can provide.
     %  each is either a string e.g. -- "text/html"
     %   or a string and parameters e.g. -- {"text/html",[{level,1}]}
     % (the plain string case with no parameters is much more common)

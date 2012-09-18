@@ -99,10 +99,10 @@ loop(MochiReq, LoopOpts) ->
                 _ -> nop
             end;
         {Mod, ModOpts, HostTokens, Port, PathTokens, Bindings, AppRoot, StringPath} ->
-            BootstrapResource = webmachine_resource:new(x,x,x,x),
+            BootstrapResource = webmachine_controller:new(x,x,x,x),
             {ok, Resource} = BootstrapResource:wrap(ReqData, Mod, ModOpts),
             {ok,RD1} = webmachine_request:load_dispatch_data(Bindings,HostTokens,Port,PathTokens,AppRoot,StringPath,ReqDispatch),
-            {ok,RD2} = webmachine_request:set_metadata('resource_module', Mod, RD1),
+            {ok,RD2} = webmachine_request:set_metadata('controller_module', Mod, RD1),
             try 
                 case webmachine_decision_core:handle_request(Resource, RD2) of
                     {_, RsFin, RdFin} ->
@@ -110,7 +110,7 @@ loop(MochiReq, LoopOpts) ->
                         {_, RdResp} = webmachine_request:send_response(RdFin),
                         RsFin:stop(RdResp),                       
                         LogData0 = webmachine_request:log_data(RdResp),
-                        spawn(fun() -> webmachine_decision_core:do_log(LogData0#wm_log_data{resource_module=Mod, end_time=EndTime}) end),                        
+                        spawn(fun() -> webmachine_decision_core:do_log(LogData0#wm_log_data{controller_module=Mod, end_time=EndTime}) end),                        
                         ok;
                     {upgrade, UpgradeFun, RsFin, RdFin} ->
                         %%TODO: wmtracing 4xx result codes should ignore protocol upgrades? (because the code is 404 by default...)

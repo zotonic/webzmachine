@@ -94,7 +94,7 @@ maybe_rotate(State, Time) ->
     end.    
 
 format_req(#wm_log_data{req_id=ReqId,
-                        resource_module=Mod,
+                        controller_module=Mod,
 			start_time=StartTime,
 			method=Method, 
 			peer=Peer, 

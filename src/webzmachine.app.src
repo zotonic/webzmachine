@@ -1,0 +1,10 @@
+%% -*- mode: erlang -*-
+{application, webzmachine,
+ [{description, "webzmachine"},
+  {vsn, "1.8.1"},
+  {modules,
+   []},
+  {registered, []},
+  {mod, {webmachine_app, []}},
+  {env, [{node_id, 1}]},
+  {applications, [kernel, stdlib, crypto]}]}.

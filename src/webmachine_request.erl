@@ -25,7 +25,7 @@
 
 -export([get_peer/1]). % used in initialization
 
-% actual interface for resource functions
+% actual interface for controller functions
 -export([
      server_header/0,
      socket/1,

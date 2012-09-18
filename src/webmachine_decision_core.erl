@@ -35,9 +35,9 @@ handle_request(Resource, ReqData) ->
             error_response(erlang:get_stacktrace(), Resource, ReqData)
     end.
 
-%% @doc Call the resource or a default.
-%% @spec resource_call(atom(), Resource, ReqData) -> {term(), NewResource, NewReqData}
-resource_call(Fun, Rs, Rd) ->
+%% @doc Call the controller or a default.
+%% @spec controller_call(atom(), Resource, ReqData) -> {term(), NewResource, NewReqData}
+controller_call(Fun, Rs, Rd) ->
 	case cacheable(Fun) of
 		true ->
 			case proplists:lookup(Fun, Rd#wm_reqdata.cache) of
@@ -78,12 +78,12 @@ respond(Code, Rs, Rd) ->
             {Rs, wrq:set_resp_body(ErrorHTML, RdError)};
         304 ->
             RdNoCT = wrq:remove_resp_header("Content-Type", Rd),
-            {Etag, RsEt, RdEt0} = resource_call(generate_etag, Rs, RdNoCT),
+            {Etag, RsEt, RdEt0} = controller_call(generate_etag, Rs, RdNoCT),
             RdEt = case Etag of
                 undefined -> RdEt0;
                 ETag -> wrq:set_resp_header("ETag", ETag, RdEt0)
             end,
-            {Expires, RsExp, RdExp0} = resource_call(expires, RsEt, RdEt),
+            {Expires, RsExp, RdExp0} = controller_call(expires, RsEt, RdEt),
             RdExp = case Expires of
                 undefined -> RdExp0;
                 Exp -> wrq:set_resp_header("Expires", httpd_util:rfc1123_date(calendar:universal_time_to_local_time(Exp)), RdExp0)
@@ -93,7 +93,7 @@ respond(Code, Rs, Rd) ->
             {Rs, Rd}
     end,
     RdRespCode = wrq:set_response_code(Code, RdCode),
-    resource_call(finish_request, RsCode, RdRespCode).
+    controller_call(finish_request, RsCode, RdRespCode).
 
 respond(Code, Headers, Rs, Rd) ->
     RdHs = wrq:set_resp_headers(Headers, Rd),
@@ -158,19 +158,19 @@ do_log(LogData) ->
 
 %% "Service Available"
 decision(v3b13, Rs, Rd) ->
-    decision_test(resource_call(ping, Rs, Rd), pong, v3b13b, 503);
+    decision_test(controller_call(ping, Rs, Rd), pong, v3b13b, 503);
 decision(v3b13b, Rs, Rd) ->	
-    decision_test(resource_call(service_available, Rs, Rd), true, v3b12, 503);
+    decision_test(controller_call(service_available, Rs, Rd), true, v3b12, 503);
 %% "Known method?"
 decision(v3b12, Rs, Rd) ->
-    {Methods, Rs1, Rd1} = resource_call(known_methods, Rs, Rd),
+    {Methods, Rs1, Rd1} = controller_call(known_methods, Rs, Rd),
     decision_test(lists:member(method(Rd1), Methods), true, v3b11, 501, Rs1, Rd1);
 %% "URI too long?"
 decision(v3b11, Rs, Rd) ->
-    decision_test(resource_call(uri_too_long, Rs, Rd), true, 414, v3b10);
+    decision_test(controller_call(uri_too_long, Rs, Rd), true, 414, v3b10);
 %% "Method allowed?"
 decision(v3b10, Rs, Rd) ->
-    {Methods, Rs1, Rd1} = resource_call(allowed_methods, Rs, Rd),
+    {Methods, Rs1, Rd1} = controller_call(allowed_methods, Rs, Rd),
     case lists:member(method(Rd1), Methods) of
 	true ->
 	    d(v3b9, Rs1, Rd1);
@@ -180,10 +180,10 @@ decision(v3b10, Rs, Rd) ->
     end;
 %% "Malformed?"
 decision(v3b9, Rs, Rd) ->
-    decision_test(resource_call(malformed_request, Rs, Rd), true, 400, v3b8);
+    decision_test(controller_call(malformed_request, Rs, Rd), true, 400, v3b8);
 %% "Authorized?"
 decision(v3b8, Rs, Rd) ->
-    {IsAuthorized, Rs1, Rd1} = resource_call(is_authorized, Rs, Rd),
+    {IsAuthorized, Rs1, Rd1} = controller_call(is_authorized, Rs, Rd),
     case IsAuthorized of
 	true -> 
 	    d(v3b7, Rs1, Rd1);
@@ -197,7 +197,7 @@ decision(v3b8, Rs, Rd) ->
     end;
 %% "Forbidden?"
 decision(v3b7, Rs, Rd) ->
-    decision_test(resource_call(forbidden, Rs, Rd), true, 403, v3b6_upgrade);
+    decision_test(controller_call(forbidden, Rs, Rd), true, 403, v3b6_upgrade);
 %% "Upgrade?"
 decision(v3b6_upgrade, Rs, Rd) ->
     case get_header_val("upgrade", Rd) of
@@ -225,25 +225,25 @@ decision(v3b6_upgrade, Rs, Rd) ->
 	end;
 %% "Okay Content-* Headers?"
 decision(v3b6, Rs, Rd) ->
-    decision_test(resource_call(valid_content_headers, Rs, Rd), true, v3b5, 501);
+    decision_test(controller_call(valid_content_headers, Rs, Rd), true, v3b5, 501);
 %% "Known Content-Type?"
 decision(v3b5, Rs, Rd) ->
-    decision_test(resource_call(known_content_type, Rs, Rd), true, v3b4, 415);
+    decision_test(controller_call(known_content_type, Rs, Rd), true, v3b4, 415);
 %% "Req Entity Too Large?"
 decision(v3b4, Rs, Rd) ->
-    decision_test(resource_call(valid_entity_length, Rs, Rd), true, v3b3, 413);
+    decision_test(controller_call(valid_entity_length, Rs, Rd), true, v3b3, 413);
 %% "OPTIONS?"
 decision(v3b3, Rs, Rd) ->
     case wrq:method(Rd) of 
 	'OPTIONS' ->
-	    {Hdrs, Rs1, Rd1} = resource_call(options, Rs, Rd),
+	    {Hdrs, Rs1, Rd1} = controller_call(options, Rs, Rd),
 	    respond(200, Hdrs, Rs1, Rd1);
 	_ ->
 	    d(v3c3, Rs, Rd)
     end;
 %% Accept exists?
 decision(v3c3, Rs, Rd) ->
-    {ContentTypes, Rs1, Rd1} = resource_call(content_types_provided, Rs, Rd),
+    {ContentTypes, Rs1, Rd1} = controller_call(content_types_provided, Rs, Rd),
     PTypes = [Type || {Type,_Fun} <- ContentTypes],
     case get_header_val("accept", Rd1) of
 	undefined ->
@@ -254,7 +254,7 @@ decision(v3c3, Rs, Rd) ->
     end;
 %% Acceptable media type available?
 decision(v3c4, Rs, Rd) ->
-    {ContentTypesProvided, Rs1, Rd1} = resource_call(content_types_provided, Rs, Rd),
+    {ContentTypesProvided, Rs1, Rd1} = controller_call(content_types_provided, Rs, Rd),
     PTypes = [Type || {Type,_Fun} <- ContentTypesProvided],
     AcceptHdr = get_header_val("accept", Rd1),
     case webmachine_util:choose_media_type(PTypes, AcceptHdr) of
@@ -269,7 +269,7 @@ decision(v3d4, Rs, Rd) ->
     decision_test(get_header_val("accept-language", Rd), undefined, v3e5, v3d5, Rs, Rd);
 %% Acceptable Language available? %% WMACH-46 (do this as proper conneg)
 decision(v3d5, Rs, Rd) ->
-    decision_test(resource_call(language_available, Rs, Rd), true, v3e5, 406);
+    decision_test(controller_call(language_available, Rs, Rd), true, v3e5, 406);
 %% Accept-Charset exists?
 decision(v3e5, Rs, Rd) ->
     case get_header_val("accept-charset", Rd) of
@@ -303,7 +303,7 @@ decision(v3g7, Rs, Rd) ->
         [] -> Rd1;
         _ -> wrq:set_resp_header("Vary", string:join(Variances, ", "), Rd1)
     end,
-    decision_test(resource_call(resource_exists, Rs1, RdVar), true, v3g8, v3h7);
+    decision_test(controller_call(resource_exists, Rs1, RdVar), true, v3g8, v3h7);
 %% "If-Match exists?"
 decision(v3g8, Rs, Rd) ->
     decision_test(get_header_val("if-match", Rd), undefined, v3h10, v3g9, Rs, Rd);
@@ -313,7 +313,7 @@ decision(v3g9, Rs, Rd) ->
 %% "ETag in If-Match"
 decision(v3g11, Rs, Rd) ->
     ETags = webmachine_util:split_quoted_strings(get_header_val("if-match", Rd)),
-    decision_test_fn(resource_call(generate_etag, Rs, Rd),
+    decision_test_fn(controller_call(generate_etag, Rs, Rd),
                      fun(ETag) -> lists:member(ETag, ETags) end,
                      v3h10, 412);
 %% "If-Match: * exists"
@@ -330,11 +330,11 @@ decision(v3h11, Rs, Rd) ->
 decision(v3h12, Rs, Rd) ->
     ReqDate = get_header_val("if-unmodified-since", Rd),
     ReqErlDate = webmachine_util:convert_request_date(ReqDate),
-    {ResErlDate, Rs1, Rd1} = resource_call(last_modified, Rs, Rd),
+    {ResErlDate, Rs1, Rd1} = controller_call(last_modified, Rs, Rd),
     decision_test(ResErlDate > ReqErlDate, true, 412, v3i12, Rs1, Rd1);
 %% "Moved permanently? (apply PUT to different URI)"
 decision(v3i4, Rs, Rd) ->
-    {MovedPermanently, Rs1, Rd1} = resource_call(moved_permanently, Rs, Rd),
+    {MovedPermanently, Rs1, Rd1} = controller_call(moved_permanently, Rs, Rd),
     case MovedPermanently of
 	{true, MovedURI} ->
 	    RdLoc = wrq:set_resp_header("Location", MovedURI, Rd1),
@@ -360,7 +360,7 @@ decision(v3j18, Rs, Rd) ->
     decision_test(lists:member(method(Rd),['GET','HEAD']), true, 304, 412, Rs, Rd);
 %% "Moved permanently?"
 decision(v3k5, Rs, Rd) ->
-    {MovedPermanently, Rs1, Rd1} = resource_call(moved_permanently, Rs, Rd),
+    {MovedPermanently, Rs1, Rd1} = controller_call(moved_permanently, Rs, Rd),
     case MovedPermanently of
 	{true, MovedURI} ->
 	    RdLoc = wrq:set_resp_header("Location", MovedURI, Rd1),
@@ -374,11 +374,11 @@ decision(v3k5, Rs, Rd) ->
     end;
 %% "Previously existed?"
 decision(v3k7, Rs, Rd) ->
-    decision_test(resource_call(previously_existed, Rs, Rd), true, v3k5, v3l7);
+    decision_test(controller_call(previously_existed, Rs, Rd), true, v3k5, v3l7);
 %% "Etag in if-none-match?"
 decision(v3k13, Rs, Rd) ->
     ETags = webmachine_util:split_quoted_strings(get_header_val("if-none-match", Rd)),
-    decision_test_fn(resource_call(generate_etag, Rs, Rd),
+    decision_test_fn(controller_call(generate_etag, Rs, Rd),
                      %% Membership test is a little counter-intuitive here; if the
                      %% provided ETag is a member, we follow the error case out
                      %% via v3j18.
@@ -386,7 +386,7 @@ decision(v3k13, Rs, Rd) ->
                      v3j18, v3l13);
 %% "Moved temporarily?"
 decision(v3l5, Rs, Rd) ->
-    {MovedTemporarily, Rs1, Rd1} = resource_call(moved_temporarily, Rs, Rd),
+    {MovedTemporarily, Rs1, Rd1} = controller_call(moved_temporarily, Rs, Rd),
     case MovedTemporarily of
 	{true, MovedURI} ->
 	    RdLoc = wrq:set_resp_header("Location", MovedURI, Rd1),
@@ -418,7 +418,7 @@ decision(v3l15, Rs, Rd) ->
 decision(v3l17, Rs, Rd) ->
     ReqDate = get_header_val("if-modified-since", Rd),    
     ReqErlDate = webmachine_util:convert_request_date(ReqDate),
-    {ResErlDate, Rs1, Rd1} = resource_call(last_modified, Rs, Rd),
+    {ResErlDate, Rs1, Rd1} = controller_call(last_modified, Rs, Rd),
     decision_test(ResErlDate =:= undefined orelse ResErlDate > ReqErlDate,
                   true, v3m16, 304, Rs1, Rd1);
 %% "POST?"
@@ -426,25 +426,25 @@ decision(v3m5, Rs, Rd) ->
     decision_test(method(Rd), 'POST', v3n5, 410, Rs, Rd);
 %% "Server allows POST to missing resource?"
 decision(v3m7, Rs, Rd) ->
-    decision_test(resource_call(allow_missing_post, Rs, Rd), true, v3n11, 404);
+    decision_test(controller_call(allow_missing_post, Rs, Rd), true, v3n11, 404);
 %% "DELETE?"
 decision(v3m16, Rs, Rd) ->
     decision_test(method(Rd), 'DELETE', v3m20, v3n16, Rs, Rd);
 %% DELETE enacted immediately?
 %% Also where DELETE is forced.
 decision(v3m20, Rs, Rd) ->
-    decision_test(resource_call(delete_resource, Rs, Rd), true, v3m20b, 500);
+    decision_test(controller_call(delete_resource, Rs, Rd), true, v3m20b, 500);
 decision(v3m20b, Rs, Rd) ->
-    decision_test(resource_call(delete_completed, Rs, Rd), true, v3o20, 202);
+    decision_test(controller_call(delete_completed, Rs, Rd), true, v3o20, 202);
 %% "Server allows POST to missing resource?"
 decision(v3n5, Rs, Rd) ->
-    decision_test(resource_call(allow_missing_post, Rs, Rd), true, v3n11, 410);
+    decision_test(controller_call(allow_missing_post, Rs, Rd), true, v3n11, 410);
 %% "Redirect?"
 decision(v3n11, Rs, Rd) ->
-    {PostIsCreate, Rs1, Rd1} = resource_call(post_is_create, Rs, Rd),
+    {PostIsCreate, Rs1, Rd1} = controller_call(post_is_create, Rs, Rd),
     {Stage1, RsStage1, RdStage1} = case PostIsCreate of
         true ->
-            {CreatePath, Rs2, Rd2} = resource_call(create_path, Rs1, Rd1),
+            {CreatePath, Rs2, Rd2} = controller_call(create_path, Rs1, Rd1),
             case CreatePath of
                 undefined -> 
                     error_response("post_is_create w/o create_path", Rs2, Rd2);
@@ -453,7 +453,7 @@ decision(v3n11, Rs, Rd) ->
                         false -> 
                             error_response("create_path not a string", Rs2, Rd2);
                         true ->
-                            {BaseUri0, Rs3, Rd3} = resource_call(base_uri, Rs2, Rd2),
+                            {BaseUri0, Rs3, Rd3} = controller_call(base_uri, Rs2, Rd2),
                             BaseUri = case BaseUri0 of
                                             undefined -> 
                                                 wrq:base_uri(Rd2);
@@ -481,7 +481,7 @@ decision(v3n11, Rs, Rd) ->
                     end
             end;
         _ ->
-            {ProcessPost, Rs2, Rd2} = resource_call(process_post, Rs1, Rd1),
+            {ProcessPost, Rs2, Rd2} = controller_call(process_post, Rs1, Rd1),
             case ProcessPost of
                 true -> 
                     {_, Rs3, Rd3} = encode_body_if_set(Rs2, Rd2),
@@ -511,7 +511,7 @@ decision(v3n16, Rs, Rd) ->
     decision_test(method(Rd), 'POST', v3n11, v3o16, Rs, Rd);
 %% Conflict?
 decision(v3o14, Rs, Rd) ->
-    {IsConflict, Rs1, Rd1} = resource_call(is_conflict, Rs, Rd),
+    {IsConflict, Rs1, Rd1} = controller_call(is_conflict, Rs, Rd),
     case IsConflict of
         true -> respond(409, Rs1, Rd1);
         _ -> 
@@ -537,28 +537,28 @@ decision(v3o18, Rs, Rd) ->
     end,
     {FinalBody, RsBody, RdBody} = case BuildBody of
         true ->
-            {Etag, RsEtag, RdEtag0} = resource_call(generate_etag, Rs, Rd),
+            {Etag, RsEtag, RdEtag0} = controller_call(generate_etag, Rs, Rd),
             RdEtag = case Etag of
                 undefined -> RdEtag0;
                 ETag -> wrq:set_resp_header("ETag", ETag, RdEtag0)
             end,
 
-            {LastModified, RsLM, RdLM0} = resource_call(last_modified, RsEtag, RdEtag),
+            {LastModified, RsLM, RdLM0} = controller_call(last_modified, RsEtag, RdEtag),
             RdLM = case LastModified of
                 undefined -> RdLM0;
                 LM -> wrq:set_resp_header("Last-Modified", httpd_util:rfc1123_date(calendar:universal_time_to_local_time(LM)), RdLM0)
             end,
 
-            {Expires, RsExp, RdExp0} = resource_call(expires, RsLM, RdLM),
+            {Expires, RsExp, RdExp0} = controller_call(expires, RsLM, RdLM),
             RdExp = case Expires of
                 undefined -> RdExp0;
                 Exp -> wrq:set_resp_header("Expires", httpd_util:rfc1123_date(calendar:universal_time_to_local_time(Exp)), RdExp0)
             end,
 
             CT = webmachine_request:get_metadata('content-type', RdExp),
-            {ContentTypesProvided, RsCT, RdCT} = resource_call(content_types_provided, RsExp, RdExp),
+            {ContentTypesProvided, RsCT, RdCT} = controller_call(content_types_provided, RsExp, RdExp),
             F = hd([Fun || {Type,Fun} <- ContentTypesProvided, CT =:= Type]),
-            resource_call(F, RsCT, RdCT);
+            controller_call(F, RsCT, RdCT);
         false -> 
             {nop, Rs, Rd}
     end,
@@ -573,13 +573,13 @@ decision(v3o18, Rs, Rd) ->
     end;
 
 decision(v3o18b, Rs, Rd) ->
-    decision_test(resource_call(multiple_choices, Rs, Rd), true, 300, 200);
+    decision_test(controller_call(multiple_choices, Rs, Rd), true, 300, 200);
 %% Response includes an entity?
 decision(v3o20, Rs, Rd) ->
     decision_test(webmachine_request:has_resp_body(Rd), true, v3o18, 204, Rs, Rd);
 %% Conflict?
 decision(v3p3, Rs, Rd) ->
-    {IsConflict, Rs1, Rd1} = resource_call(is_conflict, Rs, Rd),
+    {IsConflict, Rs1, Rd1} = controller_call(is_conflict, Rs, Rd),
     case IsConflict of
         true -> respond(409, Rs1, Rd1);
         _ -> 
@@ -593,7 +593,7 @@ decision(v3p3, Rs, Rd) ->
             end
     end;
 
-%% New resource?  (at this point boils down to "has location header")
+%% New controller?  (at this point boils down to "has location header")
 decision(v3p11, Rs, Rd) ->
     case wrq:get_resp_header("Location", Rd) of
         undefined -> d(v3o20, Rs, Rd);
@@ -607,13 +607,13 @@ accept_helper(Rs, Rd) ->
          end,
     {MT, MParams} = webmachine_util:media_type_to_detail(CT),
     {ok, RdMParams} = webmachine_request:set_metadata('mediaparams', MParams, Rd),
-    {ContentTypesAccepted, Rs1, Rd1} = resource_call(content_types_accepted, Rs, RdMParams),
+    {ContentTypesAccepted, Rs1, Rd1} = controller_call(content_types_accepted, Rs, RdMParams),
     case [Fun || {Type,Fun} <- ContentTypesAccepted, MT =:= Type] of
         [] -> 
             {{respond, 415}, Rs1, Rd1};
         AcceptedContentList ->
             F = hd(AcceptedContentList),
-            {Result, Rs2, Rd2} = resource_call(F, Rs1, Rd1),
+            {Result, Rs2, Rd2} = controller_call(F, Rs1, Rd1),
             case Result of
                 true ->
                     {_, RsEncoded, RdEncoded} = encode_body_if_set(Rs2, Rd2),
@@ -635,14 +635,14 @@ encode_body_if_set(Rs, Rd) ->
 
 encode_body(Body, Rs, Rd) ->
     ChosenCSet = webmachine_request:get_metadata('chosen-charset', Rd),
-    {CharSetsProvided, Rs1, Rd1} = resource_call(charsets_provided, Rs, Rd),
+    {CharSetsProvided, Rs1, Rd1} = controller_call(charsets_provided, Rs, Rd),
     Charsetter = 
         case CharSetsProvided of
             no_charset -> fun(X) -> X end;
             CP -> hd([Fun || {CSet,Fun} <- CP, ChosenCSet =:= CSet])
         end,
     ChosenEnc = webmachine_request:get_metadata('content-encoding', Rd1),
-    {EncodingsProvided, Rs2, Rd2} = resource_call(encodings_provided, Rs1, Rd1),
+    {EncodingsProvided, Rs2, Rd2} = controller_call(encodings_provided, Rs1, Rd1),
     Encoder = hd([Fun || {Enc,Fun} <- EncodingsProvided, ChosenEnc =:= Enc]),
     case Body of
         {stream, StreamBody} ->
@@ -671,7 +671,7 @@ make_encoder_stream(Encoder, Charsetter, {Body, Next}) ->
     {Encoder(Charsetter(Body)), fun() -> make_encoder_stream(Encoder, Charsetter, Next()) end}.
 
 choose_encoding(AccEncHdr, Rs, Rd) ->
-    {EncodingsProvided, Rs1, Rd1} = resource_call(encodings_provided, Rs, Rd),
+    {EncodingsProvided, Rs1, Rd1} = controller_call(encodings_provided, Rs, Rd),
     Encs = [Enc || {Enc,_Fun} <- EncodingsProvided],
     case webmachine_util:choose_encoding(Encs, AccEncHdr) of
 	none -> 
@@ -686,7 +686,7 @@ choose_encoding(AccEncHdr, Rs, Rd) ->
     end.
 
 choose_charset(AccCharHdr, Rs, Rd) ->
-    {CharsetsProvided, Rs1, Rd1} = resource_call(charsets_provided, Rs, Rd),
+    {CharsetsProvided, Rs1, Rd1} = controller_call(charsets_provided, Rs, Rd),
     case CharsetsProvided of
         no_charset ->
             {no_charset, Rs1, Rd1};
@@ -702,7 +702,7 @@ choose_charset(AccCharHdr, Rs, Rd) ->
     end.
 
 choose_upgrade(UpgradeHdr, Rs, Rd) ->
-    {UpgradesProvided, Rs1, Rd1} = resource_call(upgrades_provided, Rs, Rd),
+    {UpgradesProvided, Rs1, Rd1} = controller_call(upgrades_provided, Rs, Rd),
 	Provided1 = [ {string:to_lower(Prot), Prot, PFun} || {Prot, PFun} <- UpgradesProvided],
 	Requested = [ string:to_lower(string:strip(Up)) || Up <- string:tokens(UpgradeHdr, ",") ],
 	{choose_upgrade1(Requested, Provided1), Rs1, Rd1}.
@@ -719,19 +719,19 @@ choose_upgrade(UpgradeHdr, Rs, Rd) ->
 
 
 variances(Rs, Rd) ->
-    {ContentTypesProvided, Rs1, Rd1} = resource_call(content_types_provided, Rs, Rd),
+    {ContentTypesProvided, Rs1, Rd1} = controller_call(content_types_provided, Rs, Rd),
     Accept = case length(ContentTypesProvided) of
         1 -> [];
         0 -> [];
         _ -> ["Accept"]
     end,
-    {EncodingsProvided, Rs2, Rd2} = resource_call(encodings_provided, Rs1, Rd1),
+    {EncodingsProvided, Rs2, Rd2} = controller_call(encodings_provided, Rs1, Rd1),
     AcceptEncoding = case length(EncodingsProvided) of
 	1 -> [];
 	0 -> [];
 	_ -> ["Accept-Encoding"]
     end,
-    {CharsetsProvided, Rs3, Rd3} = resource_call(charsets_provided, Rs2, Rd2),
+    {CharsetsProvided, Rs3, Rd3} = controller_call(charsets_provided, Rs2, Rd2),
     AcceptCharset = case CharsetsProvided of
         no_charset -> 
             [];
@@ -742,7 +742,7 @@ variances(Rs, Rd) ->
                 _ -> ["Accept-Charset"]
             end
     end,
-    {Variances, Rs4, Rd4} = resource_call(variances, Rs3, Rd3),
+    {Variances, Rs4, Rd4} = controller_call(variances, Rs3, Rd3),
     {Accept ++ AcceptEncoding ++ AcceptCharset ++ Variances, Rs4, Rd4}.
     
     

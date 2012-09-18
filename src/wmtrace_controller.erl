@@ -1,6 +1,6 @@
 %% @author Bryan Fink <bryan@basho.com>
 %% @doc Webmachine trace file interpretter.
--module(wmtrace_resource).
+-module(wmtrace_controller).
 
 -export([add_dispatch_rule/2,
          remove_dispatch_rules/0]).
@@ -31,8 +31,8 @@
 %%
 
 %% @spec add_dispatch_rule(string(), string()) -> ok
-%% @doc Add a dispatch rule to point at wmtrace_resource.
-%%      Example: to serve wmtrace_resource from
+%% @doc Add a dispatch rule to point at wmtrace_controller.
+%%      Example: to serve wmtrace_controller from
 %%        http://yourhost/dev/wmtrace/
 %%               with trace files on disk at
 %%        priv/traces
@@ -46,7 +46,7 @@ add_dispatch_rule(BasePath, TracePath) when is_list(BasePath),
        |get_dispatch_list()]).
 
 %% @spec remove_dispatch_rules() -> ok
-%% @doc Remove all dispatch rules pointing to wmtrace_resource.
+%% @doc Remove all dispatch rules pointing to wmtrace_controller.
 remove_dispatch_rules() ->
     set_dispatch_list(
       [ D || D={_,M,_} <- get_dispatch_list(),
@@ -64,7 +64,7 @@ set_dispatch_list(NewList) when is_list(NewList) ->
 %%
 
 start_link(Args) ->
-    webmachine_resource:start_link(?MODULE, [Args]).
+    webmachine_controller:start_link(?MODULE, [Args]).
 
 ping(ReqData, State) ->
     {pong, ReqData, State}.

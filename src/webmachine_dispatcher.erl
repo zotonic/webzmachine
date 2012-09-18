@@ -110,12 +110,12 @@ split_host(HostAsString) ->
 %% @type matchmod() = atom().
 % This atom, if present in a successful matchterm, will appear in
 % the resulting dispterm.  In Webmachine this is used to name the
-% resource module that will handle the matching request.
+% controller module that will handle the matching request.
 
 %% @type matchopts() = [term()].
 % This term, if present in a successful matchterm, will appear in
 % the resulting dispterm.  In Webmachine this is used to provide
-% arguments to the resource module handling the matching request.
+% arguments to the controller module handling the matching request.
 
 %% @type dispterm() = {matchmod(), matchopts(), pathtokens(),
 %%                bindings(), approot(), stringpath()}.
