@@ -109,7 +109,7 @@ format_req(#wm_log_data{req_id=ReqId,
     Length = integer_to_list(ResponseLength),
     TTPD = webmachine_util:now_diff_milliseconds(EndTime, StartTime),
     TTPS = webmachine_util:now_diff_milliseconds(FinishTime, EndTime),
-    fmt_plog(Time, ReqId, Peer, atom_to_list(Method), Path, Version,
+    fmt_plog(Time, ReqId, Peer, webmachine_util:fmt_method(Method), Path, Version,
 	     Status, Length, atom_to_list(Mod), integer_to_list(TTPD),
 	     integer_to_list(TTPS)).
 

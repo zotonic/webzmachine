@@ -28,6 +28,7 @@
          quoted_string/1,
          split_quoted_strings/1]).
 -export([to_console/2]).
+-export([fmt_method/1]).
 
 -ifdef(TEST).
 -ifdef(EQC).
@@ -338,6 +339,9 @@ to_console(Format, Data) when is_list(Format), is_list(Data) ->
 
 to_console(_Format, _Data, true) -> ok;
 to_console(Format, Data, false) -> io:format(Format, Data).
+
+fmt_method(M) when is_atom(M) -> atom_to_list(M);
+fmt_method(M) when is_list(M) -> M.
 
 %%
 %% TEST
