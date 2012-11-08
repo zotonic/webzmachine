@@ -71,7 +71,7 @@ d(DecisionID, Rs, Rd) ->
 
 respond(Code, Rs, Rd) ->
     {RsCode, RdCode} = case Code of
-        Code when Code == 403; Code == 404 ->
+        Code when Code =:= 403; Code =:= 404; Code =:= 410 ->
             {ok, ErrorHandler} = application:get_env(webzmachine, error_handler),
             Reason = {none, none, []},
             {ErrorHTML, RdError} = ErrorHandler:render_error(Code, Rd, Reason),
