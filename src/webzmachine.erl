@@ -18,10 +18,14 @@
 -author('Justin Sheehy <justin@basho.com>').
 -author('Andy Gross <andy@basho.com>').
 -export([start/0, stop/0]).
+-export_type([reqdata/0, context/0, reply/0]).
 
 -include("webmachine_logger.hrl").
 -include_lib("include/wm_reqdata.hrl").
 
+-opaque reqdata() :: #wm_reqdata{}.
+-opaque context() :: term().
+-type reply() :: {Result::term(), reqdata(), context()}.
 
 %% @spec start() -> ok
 %% @doc Start the webmachine server.
