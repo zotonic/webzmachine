@@ -236,7 +236,7 @@ escape_trace_list(Final, Acc) ->
     lists:reverse(tl(Acc))++[hd(Acc)|escape_trace_data(Final)].
 
 start_log_proc(Dir, Mod, Eagerness) ->
-    Now = {_,_,US} = now(),
+    Now = {_,_,US} = os:timestamp(),
     {{Y,M,D},{H,I,S}} = calendar:now_to_universal_time(Now),
     Filename = io_lib:format(
         "~s/~p-~4..0B-~2..0B-~2..0B"

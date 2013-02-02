@@ -61,7 +61,7 @@ init_reqdata(MochiReq) ->
     {Peer, ReqData} = webmachine_request:get_peer(ReqData0),
     PeerState = wrq:set_peer(Peer, ReqData),
     LogData = #wm_log_data{req_id=webmachine_id:generate(),
-                           start_time=now(),
+                           start_time=os:timestamp(),
                            method=Method,
                            headers=Headers,
                            peer=PeerState#wm_reqdata.peer,
@@ -106,7 +106,7 @@ loop(MochiReq, LoopOpts) ->
             try 
                 case webmachine_decision_core:handle_request(Resource, RD2) of
                     {_, RsFin, RdFin} ->
-                        EndTime = now(),
+                        EndTime = os:timestamp(),
                         {_, RdResp} = webmachine_request:send_response(RdFin),
                         RsFin:stop(RdResp),                       
                         LogData0 = webmachine_request:log_data(RdResp),

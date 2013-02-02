@@ -183,7 +183,7 @@ send_response(ReqData) ->
         Code -> send_response(Code, ReqData)
     end,
     LogData = RD1#wm_reqdata.log_data,
-    NewLogData = LogData#wm_log_data{finish_time=now()},
+    NewLogData = LogData#wm_log_data{finish_time=os:timestamp()},
     {Reply, RD1#wm_reqdata{log_data=NewLogData}}.
 
 send_ok_response(ReqData) ->

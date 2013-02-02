@@ -40,7 +40,7 @@ init([BaseDir]) ->
     {ok, #state{filename=FileName, handle=Handle, hourstamp=DateHour}}.
 
 refresh() ->
-    refresh(now()).
+    refresh(os:timestamp()).
 
 refresh(Time) ->
     gen_server:cast(?MODULE, {refresh, Time}).
@@ -49,7 +49,7 @@ log(#wm_log_data{}=D) ->
     gen_server:call(?MODULE, {log, D}, infinity).
 
 handle_call({log, LogData}, _From, State) ->
-    NewState = maybe_rotate(State, now()),
+    NewState = maybe_rotate(State, os:timestamp()),
     Msg = format_req(LogData),
     log_write(NewState#state.handle, Msg),
     {reply, ok, NewState}.
@@ -133,7 +133,7 @@ defer_refresh() ->
     timer:apply_after(Time, ?MODULE, refresh, []).
 
 datehour() ->
-    datehour(now()).
+    datehour(os:timestamp()).
 
 datehour(Now) ->
     {{Y, M, D}, {H, _, _}} = calendar:now_to_universal_time(Now),

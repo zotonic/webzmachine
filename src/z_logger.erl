@@ -208,7 +208,7 @@ fmt_timestamp(text) ->
     io_lib:format(?TS_FORMATSTR,
                   [Y, M, D, H, Mm, S]);
 fmt_timestamp(binary) ->
-    Now = now(),
+    Now = os:timestamp(),
     term_to_binary(Now).
     
 fmt_timestamp(text, Format) ->
