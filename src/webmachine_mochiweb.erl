@@ -71,6 +71,7 @@ init_reqdata(MochiReq) ->
                            response_length=0},
     PeerState#wm_reqdata{log_data=LogData}.
 
+
 loop(MochiReq, LoopOpts) ->
     reset_process_dictionary(),
     ReqData = init_reqdata(MochiReq),
@@ -93,11 +94,7 @@ loop(MochiReq, LoopOpts) ->
             ReqState2 = webmachine_request:append_to_response_body(ErrorHTML, ReqState1),
             {ok,ReqState3} = webmachine_request:send_response(404, ReqState2),
             LogData = webmachine_request:log_data(ReqState3),
-            case application:get_env(webzmachine,webmachine_logger_module) of
-                {ok, LogModule} ->
-                    spawn(LogModule, log_access, [LogData]);
-                _ -> nop
-            end;
+            webmachine_decision_core:do_log(LogData);
         {Mod, ModOpts, HostTokens, Port, PathTokens, Bindings, AppRoot, StringPath} ->
             BootstrapResource = webmachine_controller:new(x,x,x,x),
             {ok, Resource} = BootstrapResource:wrap(ReqData, Mod, ModOpts),
@@ -123,12 +120,7 @@ loop(MochiReq, LoopOpts) ->
                     ?WM_DBG({error, erlang:get_stacktrace()}),
                     {ok,RD3} = webmachine_request:send_response(500, RD2),
                     Resource:stop(RD3),
-                    case application:get_env(webzmachine, webmachine_logger_module) of
-                        {ok, LogModule} -> 
-                            spawn(LogModule, log_access, [webmachine_request:log_data(RD3)]);
-                        _ ->
-                            nop
-                    end
+                    webmachine_decision_core:do_log(RD3)
             end;
         handled ->
             nop

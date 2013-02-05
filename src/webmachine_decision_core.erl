@@ -149,11 +149,12 @@ do_log(LogData) ->
         _ -> nop
     end,
     case application:get_env(webzmachine, enable_perf_logger) of
-	{ok, true} ->
-	    spawn(webmachine_perf_logger, log, [LogData]);
-	_ ->
-	    ignore
+        {ok, true} ->
+	       spawn(webmachine_perf_logger, log, [LogData]);
+	   _ ->
+	       ignore
     end.
+
 
 
 %% "Service Available"
