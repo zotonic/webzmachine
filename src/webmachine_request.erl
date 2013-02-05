@@ -715,5 +715,5 @@ load_dispatch_data(Bindings, HostTokens, Port, PathTokens, AppRoot, DispPath, Re
     {ok, RD1}.
 
 
-log_data(ReqData) ->
-    ReqData#wm_reqdata.log_data.
+log_data(#wm_reqdata{log_data=LogData, metadata=MetaData}) ->
+    LogData#wm_log_data{metadata=MetaData}.

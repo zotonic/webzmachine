@@ -12,5 +12,6 @@
 	 response_code,
 	 response_length,
 	 end_time :: tuple(),
-	 finish_time :: tuple()}).
+	 finish_time :: tuple(),
+	 metadata :: dict()}).
 
