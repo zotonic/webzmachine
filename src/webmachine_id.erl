@@ -22,4 +22,4 @@ generate() ->
         undefined -> undefined;
         {ok, NodeId_} -> NodeId_
     end,
-    erlang:phash2({NodeId, make_ref(), os:timeout()}, 1073741824). %% 2^30
+    erlang:phash2({NodeId, make_ref(), os:timestamp()}, 1073741824).
