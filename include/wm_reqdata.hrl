@@ -8,8 +8,8 @@
     log_data=undefined,
 
     % Reqdata
-    method,
-    scheme  :: http | https,
+    method  :: wrq:method(),
+    scheme  :: wrq:scheme(),
     version :: wrq:version(),
     disp_path,
     path     :: string(),

@@ -30,7 +30,15 @@
          get_cookie_value/2,get_qs_value/2,get_qs_value/3,set_peer/2]).
 
 % @type reqdata(). The opaque data type used for req/resp data structures.
--include_lib("include/wm_reqdata.hrl").
+-include("wm_reqdata.hrl").
+
+-type method() :: 'GET' | 'HEAD' | 'PUT' | 'POST' | 'DELETE'.
+-type scheme() :: http | https.
+-type version() :: {1, 0|1}.
+-type wm_reqdata() :: #wm_reqdata{}.
+
+-export_type([method/0, scheme/0, version/0, wm_reqdata/0]).
+
 
 create(Socket,Method,Scheme,Version,RawPath,Headers) ->
     create(#wm_reqdata{
