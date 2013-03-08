@@ -14,15 +14,22 @@
 %%    See the License for the specific language governing permissions and
 %%    limitations under the License.
 
--module(webmachine_controller, [R_Mod, R_ModState, R_ModExports, R_Trace]).
+-module(webmachine_controller).
 -author('Justin Sheehy <justin@basho.com>').
 -author('Andy Gross <andy@basho.com>').
--export([wrap/3]).
--export([do/2,log_d/1,stop/1]).
--export([modstate/0]).
+-author('Marc Worrell <marc@worrell.nl>').
 
--include_lib("wm_reqdata.hrl").
--include_lib("webmachine_logger.hrl").
+-export([
+    do/3,
+    log_d/2,
+    stop/2,
+
+    init/3,
+    modstate/1
+]).
+
+-include("../include/wm_reqdata.hrl").
+-include("../include/webmachine_logger.hrl").
 
 default(ping) ->
     no_default;
@@ -106,7 +113,7 @@ default(finish_request) ->
 default(_) ->
     no_default.
           
-wrap(ReqData, Mod, Args) ->
+init(ReqData, Mod, Args) ->
     {ok, ModState} = Mod:init(Args),
     [{trace_dir, Dir}] = ets:lookup(?WMTRACE_CONF_TBL, trace_dir),
     ToTrace = case {ets:lookup(?WMTRACE_CONF_TBL, trace_global), 
@@ -141,7 +148,11 @@ wrap(ReqData, Mod, Args) ->
               end,
     case ToTrace of
         false ->
-            {ok, webmachine_controller:new(Mod, ModState, [ F || {F,_} <- Mod:module_info(exports) ], false)};
+            {ok, #wm_controller{
+                    mod=Mod,
+                    mod_state=ModState,
+                    mod_exports=[ F || {F,_} <- Mod:module_info(exports) ],
+                    trace=false}};
         {true, Eagerness} ->
             {ok, LoggerProc} = start_log_proc(Dir, Mod, Eagerness),
             ReqId = (ReqData#wm_reqdata.log_data)#wm_log_data.req_id,        
@@ -149,47 +160,61 @@ wrap(ReqData, Mod, Args) ->
             log_decision(LoggerProc, v3b14),
             log_call(LoggerProc, attempt, Mod, init, Args),
             log_call(LoggerProc, result, Mod, init, {{trace, Dir}, ModState}),
-            {ok, webmachine_controller:new(Mod, ModState, [ F || {F,_} <- Mod:module_info(exports) ], LoggerProc)};
+            {ok, #wm_controller{
+                    mod=Mod,
+                    mod_state=ModState,
+                    mod_exports=[ F || {F,_} <- Mod:module_info(exports) ],
+                    trace=LoggerProc}};
         _ ->
             {stop, bad_init_arg}
     end.
 
-modstate() ->
-    R_ModState.
+modstate(Controller) ->
+    Controller#wm_controller.mod_state.
 
-do(Fun, ReqData) when is_atom(Fun) ->
-    {Reply, ReqData1, NewModState} = handle_wm_call(Fun, ReqData),
-    {Reply, webmachine_controller:new(R_Mod, NewModState, R_ModExports, R_Trace), ReqData1}.
-
-handle_wm_call(Fun, ReqData) ->
-    case lists:member(Fun, R_ModExports) of
+do(Fun, #wm_controller{mod_exports=Exports} = Controller, ReqData) when is_atom(Fun) ->
+    case lists:member(Fun, Exports) of
         true ->
-            controller_call(Fun, ReqData);
+            controller_call(Fun, Controller, ReqData);
         false ->
             case default(Fun) of
                 no_default -> 
-                    controller_call(Fun, ReqData);
+                    controller_call(Fun, Controller, ReqData);
                 Default ->
-                    log_call(R_Trace, not_exported, R_Mod, Fun, [ReqData, R_ModState]),
-                    {Default, ReqData, R_ModState}
+                    log_call(Controller#wm_controller.trace,
+                             no_exported,
+                             Controller#wm_controller.mod,
+                             Fun,
+                             [ReqData, Controller#wm_controller.mod_state]),
+                    {Default, Controller, ReqData}
             end
     end.
 
-controller_call(F, ReqData) ->
-    log_call(R_Trace, attempt, R_Mod, F, [ReqData, R_ModState]),
+controller_call(F, Controller, ReqData) ->
+    log_call(Controller#wm_controller.trace,
+             attempt, 
+             Controller#wm_controller.mod,
+             F,
+             [ReqData, Controller#wm_controller.mod_state]),
     Result = try
-                 apply(R_Mod, F, [ReqData, R_ModState])
+                {Res,RD1,ModState1} = apply(Controller#wm_controller.mod, F, [ReqData, Controller#wm_controller.mod_state]),
+                {Res, Controller#wm_controller{mod_state=ModState1}, RD1}
              catch C:R ->
-                     Reason = {C, R, erlang:get_stacktrace()},
-                     {{error, Reason}, ReqData, R_ModState}
+                Reason = {C, R, erlang:get_stacktrace()},
+                {{error, Reason}, Controller, ReqData}
              end,
-    log_call(R_Trace, result, R_Mod, F, Result),
+    log_call(Controller#wm_controller.trace,
+             attempt, 
+             Controller#wm_controller.mod,
+             F,
+             Result),
     Result.
 
-log_d(DecisionID) ->
-    log_decision(R_Trace, DecisionID).
+log_d(#wm_controller{trace=Trace}, DecisionID) ->
+    log_decision(Trace, DecisionID).
 
-stop(ReqData) -> stop_log_proc(R_Trace, ReqData).
+stop(#wm_controller{trace=Trace}, ReqData) ->
+    stop_log_proc(Trace, ReqData).
 
 
 log_reqid(false, _ReqId) ->

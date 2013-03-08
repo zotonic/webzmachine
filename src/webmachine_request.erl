@@ -77,7 +77,7 @@
      ]).
 
 -include("webmachine_logger.hrl").
--include_lib("include/wm_reqdata.hrl").
+-include("wm_reqdata.hrl").
 
 -define(IDLE_TIMEOUT, infinity).
 

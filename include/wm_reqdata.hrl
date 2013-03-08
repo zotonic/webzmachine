@@ -19,4 +19,11 @@
 	cache=[]
 }).
 
+-record(wm_controller, {
+    mod,
+    mod_state,
+    mod_exports, 
+    trace
+}).
+
 -define(WM_DBG(Msg), error_logger:info_msg("DEBUG: ~p:~p  ~p~n", [?MODULE, ?LINE, Msg])).
