@@ -1,7 +1,5 @@
-**NOTE** this repository is under heavy editing and unstable.
-
-webmachine
-==========
+webzmachine
+===========
 
 Zotonic's Variation
 -------------------
@@ -19,12 +17,13 @@ The main differences with Basho's Webmachine are:
 * Caching of resource callbacks results
 * Dispatch handler can redirect requests
 * Use of process dictionary has been removed
-* webmachine_request is now a normal (not parametrized) module
-* Extra logging
+* webmachine_request is now a normal (non parametrized) module
+* Resources are renamed to controllers.
+* webmachine_controller (ie. webmachine_resource) is now a non-parametrized module
+* Extra logging, also in the event of crashes
+* Use of os:timestamp() instead of now() to prevent locking and time shifts
 
-Together this gave a significant speed boost to Webmachine.
+The first couple of changes gave a significant speed boost to Webmachine.
 
 In the specific case of Zotonic the difference was 5 milliseconds (or more) per request (on a 2GHz Core 2 Duo). Without these optimizations we were not able to use Webmachine.
-
-
 
