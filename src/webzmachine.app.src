@@ -7,4 +7,4 @@
   {registered, []},
   {mod, {webmachine_app, []}},
   {env, [{node_id, 1}]},
-  {applications, [kernel, stdlib, crypto]}]}.
+  {applications, [kernel, stdlib, crypto, mochiweb]}]}.
