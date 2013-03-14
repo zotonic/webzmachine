@@ -21,7 +21,7 @@
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
--export([log_access/1, refresh/0]).
+-export([log_access/1, refresh/0, get_metadata/2]).
 -include("webmachine_logger.hrl").
 -record(state, {hourstamp, filename, handle}).
 
@@ -96,6 +96,12 @@ maybe_rotate(State, Time) ->
 	    Handle = log_open(State#state.filename, ThisHour),
 	    State#state{hourstamp=ThisHour, handle=Handle}
     end.    
+
+get_metadata(Key, #wm_log_data{metadata=MetaData}) ->
+    case dict:find(Key, MetaData) of
+        {ok, Value} -> Value;
+        error -> undefined
+    end.
 
 format_req(#wm_log_data{req_id=ReqId,
                         method=Method, 

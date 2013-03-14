@@ -18,11 +18,8 @@
 -export([generate/0]).
 
 generate() ->
-    NodeId = 
-        case application:get_env(webzmachine, node_id) of
-            undefined -> 9;
-            {ok, NodeId_} -> NodeId_
-        end,
-    {MegaSec, Sec, MicroSec} = now(),
-    Id = ((NodeId * 1000000 + MegaSec) * 1000000 + Sec) * 1000000 + MicroSec,
-    Id.
+    NodeId = case application:get_env(webzmachine, node_id) of
+        undefined -> undefined;
+        {ok, NodeId_} -> NodeId_
+    end,
+    erlang:phash2({NodeId, make_ref(), os:timestamp()}, 1073741824).

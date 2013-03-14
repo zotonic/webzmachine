@@ -71,6 +71,7 @@ init_reqdata(MochiReq) ->
                            response_length=0},
     PeerState#wm_reqdata{log_data=LogData}.
 
+
 loop(MochiReq, LoopOpts) ->
     reset_process_dictionary(),
     ReqData = init_reqdata(MochiReq),
@@ -93,11 +94,7 @@ loop(MochiReq, LoopOpts) ->
             ReqState2 = webmachine_request:append_to_response_body(ErrorHTML, ReqState1),
             {ok,ReqState3} = webmachine_request:send_response(404, ReqState2),
             LogData = webmachine_request:log_data(ReqState3),
-            case application:get_env(webzmachine,webmachine_logger_module) of
-                {ok, LogModule} ->
-                    spawn(LogModule, log_access, [LogData]);
-                _ -> nop
-            end;
+            webmachine_decision_core:do_log(LogData);
         {Mod, ModOpts, HostTokens, Port, PathTokens, Bindings, AppRoot, StringPath} ->
             {ok, Resource} = webmachine_controller:init(ReqData, Mod, ModOpts),
             {ok,RD1} = webmachine_request:load_dispatch_data(Bindings,HostTokens,Port,PathTokens,AppRoot,StringPath,ReqDispatch),
@@ -109,9 +106,7 @@ loop(MochiReq, LoopOpts) ->
                         {_, RdResp} = webmachine_request:send_response(RdFin),
                         webmachine_controller:stop(RsFin, RdResp),                       
                         LogData0 = webmachine_request:log_data(RdResp),
-                        spawn(fun() -> 
-                                webmachine_decision_core:do_log(LogData0#wm_log_data{controller_module=Mod, end_time=EndTime}) 
-                              end),                        
+                        webmachine_decision_core:do_log(LogData0#wm_log_data{controller_module=Mod, end_time=EndTime}),                        
                         ok;
                     {upgrade, UpgradeFun, RsFin, RdFin} ->
                         %%TODO: wmtracing 4xx result codes should ignore protocol upgrades? (because the code is 404 by default...)
@@ -124,12 +119,7 @@ loop(MochiReq, LoopOpts) ->
                     ?WM_DBG({error, Error, erlang:get_stacktrace()}),
                     {ok,RD3} = webmachine_request:send_response(500, RD2),
                     webmachine_controller:stop(Resource, RD3),
-                    case application:get_env(webzmachine, webmachine_logger_module) of
-                        {ok, LogModule} -> 
-                            spawn(LogModule, log_access, [webmachine_request:log_data(RD3)]);
-                        _ ->
-                            nop
-                    end
+                    webmachine_decision_core:do_log(RD3)
             end;
         handled ->
             nop
