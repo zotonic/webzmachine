@@ -145,15 +145,16 @@ decision_flow({ErrCode, Reason}, _TestResult, Rs, Rd) when is_integer(ErrCode) -
 
 do_log(LogData) ->
     case application:get_env(webzmachine, webmachine_logger_module) of
-        {ok, LoggerModule} -> LoggerModule:log_access(LogData);
+        {ok, LoggerModule} -> spawn(LoggerModule, log_access, [LogData]);
         _ -> nop
     end,
     case application:get_env(webzmachine, enable_perf_logger) of
-	{ok, true} ->
-	    webmachine_perf_logger:log(LogData);
-	_ ->
-	    ignore
+        {ok, true} ->
+	       spawn(webmachine_perf_logger, log, [LogData]);
+	   _ ->
+	       ignore
     end.
+
 
 
 %% "Service Available"
