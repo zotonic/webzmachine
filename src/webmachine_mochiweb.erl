@@ -88,6 +88,12 @@ loop(MochiReq, LoopOpts) ->
                                       Dispatcher:dispatch(Host, Path, ReqData)                                      
                               end,
     case Dispatch of
+        {no_dispatch_match, undefined, undefined} ->
+            {ErrorHTML,ReqState1} = webmachine_error_handler:render_error(404, ReqDispatch, {none, none, []}),
+            ReqState2 = webmachine_request:append_to_response_body(ErrorHTML, ReqState1),
+            {ok,ReqState3} = webmachine_request:send_response(404, ReqState2),
+            LogData = webmachine_request:log_data(ReqState3),
+            webmachine_decision_core:do_log(LogData);
         {no_dispatch_match, _UnmatchedHost, _UnmatchedPathTokens} ->
             {ok, ErrorHandler} = application:get_env(webzmachine, error_handler),
             {ErrorHTML,ReqState1} = ErrorHandler:render_error(404, ReqDispatch, {none, none, []}),
