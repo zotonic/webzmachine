@@ -27,8 +27,8 @@
 
 render_error(Code, ReqData, Reason) ->
     case webmachine_request:has_response_body(ReqData) of
-        {true,_} -> {webmachine_request:response_body(ReqData), ReqData};
-        {false,_} -> render_error_body(Code, ReqData, Reason)
+        true -> {webmachine_request:response_body(ReqData), ReqData};
+        false -> render_error_body(Code, ReqData, Reason)
     end.
 
 render_error_body(400, ReqData, _Reason) ->
