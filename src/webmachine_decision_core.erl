@@ -148,8 +148,8 @@ do_log(LogData) ->
         {ok, LoggerModule} -> spawn(LoggerModule, log_access, [LogData]);
         _ -> nop
     end,
-    case application:get_env(webzmachine, enable_perf_logger) of
-        {ok, true} ->
+    case application:get_env(webzmachine, perf_log_dir) of
+        {ok, _} ->
 	       spawn(webmachine_perf_logger, log, [LogData]);
 	   _ ->
 	       ignore
