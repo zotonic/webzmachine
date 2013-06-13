@@ -21,7 +21,7 @@
 -behaviour(supervisor).
 
 %% External exports
--export([start_link/0, upgrade/0, start_logger/0]).
+-export([start_link/0, upgrade/0, start_logger/0, start_logger/1]).
 
 %% supervisor callbacks
 -export([init/1]).
@@ -34,31 +34,30 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 start_logger() ->
-    start_logger(application:get_env(webzmachine, log_dir)),
-    start_perf_logger(application:get_env(webzmachine, perf_log_dir)).
+    {ok, LogModule} = application:get_env(webzmachine, webmachine_logger_module),
+    start_logger(LogModule),
+    start_perf_logger().
 
-start_logger({ok, LogDir}) ->
-    Logger = application:get_env(webzmachine, webmachine_logger_module),
-    start_logger(Logger, ensure_dir(LogDir));
-start_logger(_) -> nop.
+start_logger(Name) ->
+    case application:get_env(webzmachine, log_dir) of
+        {ok, LogDir} ->        
+            Path = ensure_dir(LogDir),
+            ChildSpec = {Name, {Name, start_link, [Path]}, permanent, 5000, worker, dynamic},
+            supervisor:start_child(?MODULE, ChildSpec);
+        undefined ->
+            {error, no_log_dir}
+    end.
 
-start_logger({ok, webmachine_logger}, Path) ->
-    start_child(webmachine_logger, Path);
-start_logger({ok, Logger}, Path) ->
-    start_child(webmachine_logger, Path),
-    start_child(Logger, Path);
-start_logger(_, _) -> nop.
-
-start_child(Name, Path) ->
-    ChildSpec = {Name, {Name, start_link, [Path]}, permanent, 5000, worker, dynamic},
-    supervisor:start_child(?MODULE, ChildSpec).
-
-start_perf_logger({ok, PerfDir}) ->
-    Path = ensure_dir(PerfDir),
-    ChildSpec = {webmachine_perf_logger, {webmachine_perf_logger, start_link, [Path]},
-                 permanent, 5000, worker, [webmachine_perf_logger]},
-    supervisor:start_child(?MODULE, ChildSpec);
-start_perf_logger(_) -> nop.
+start_perf_logger() ->
+    case application:get_env(webzmachine, perf_log_dir) of
+        {ok, PerfDir} ->        
+            Path = ensure_dir(PerfDir),
+            ChildSpec = {webmachine_perf_logger, {webmachine_perf_logger, start_link, [Path]},
+                         permanent, 5000, worker, [webmachine_perf_logger]},
+            supervisor:start_child(?MODULE, ChildSpec);
+        undefined ->
+            {error, no_perf_log_dir}
+    end.
 
 %% @spec upgrade() -> ok
 %% @doc Add processes if necessary.
