@@ -24,7 +24,7 @@
 -include_lib("include/wm_reqdata.hrl").
 
 -opaque reqdata() :: #wm_reqdata{}.
--opaque context() :: term().
+-type context() :: term().
 -type reply() :: {Result::term(), reqdata(), context()}.
 
 %% @spec start() -> ok
