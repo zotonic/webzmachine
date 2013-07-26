@@ -51,7 +51,6 @@
      merge_response_headers/2,
      append_to_response_body/2,
      send_response/1,
-     send_response/2,
      response_code/1,
      set_response_code/2,
      set_resp_body/2,
