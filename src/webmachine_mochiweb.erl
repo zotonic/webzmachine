@@ -82,7 +82,7 @@ loop(MochiReq, LoopOpts) ->
     Path = wrq:path(ReqData),
     {Dispatch, ReqDispatch} = case proplists:get_value(dispatcher, LoopOpts) of
                                   undefined ->
-                                      DispatchList = proplists:get_vaule(dispatch_list, LoopOpts, []),
+                                      DispatchList = proplists:get_value(dispatch_list, LoopOpts, []),
                                       {webmachine_dispatcher:dispatch(Host, Path, DispatchList), ReqData};
                                   Dispatcher ->
                                       Dispatcher:dispatch(Host, Path, ReqData)                                      
