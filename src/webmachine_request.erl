@@ -21,7 +21,7 @@
 -author('Justin Sheehy <justin@basho.com>').
 -author('Andy Gross <andy@basho.com>').
 
--define(WMVSN, "1.8.1 (compat)").
+-define(WMVSN, "2.0 (Z)").
 
 -export([get_peer/1]). % used in initialization
 
@@ -79,16 +79,18 @@
 -include("wm_reqdata.hrl").
 
 -define(IDLE_TIMEOUT, infinity).
+-define(FILE_CHUNK_LENGTH, 65536).
+
 
 get_peer(ReqData) ->
     case ReqData#wm_reqdata.peer of
-    	undefined ->
+        undefined ->
             Socket = ReqData#wm_reqdata.socket,
             Peer = peer_from_peername(mochiweb_socket:peername(Socket), ReqData),
             NewReqData = ReqData#wm_reqdata{peer=Peer},
             {Peer, NewReqData};
-    	_ ->
-    	    {ReqData#wm_reqdata.peer, ReqData}
+        _ ->
+            {ReqData#wm_reqdata.peer, ReqData}
     end.
 
 peer_from_peername({ok, {Addr={10, _, _, _}, _Port}}, ReqData) ->  
@@ -117,14 +119,93 @@ get_header_value(K, ReqData) ->
 get_outheader_value(K, ReqData) ->
     mochiweb_headers:get_value(K, wrq:resp_headers(ReqData)).
 
-send(undefined, _Data) ->
-    ok;
-send(Socket, Data) ->
-    case mochiweb_socket:send(Socket, iolist_to_binary(Data)) of
-	ok -> ok;
-	{error,closed} -> ok;
-	_ -> exit(normal)
-    end.
+send_response(ReqData) ->
+    {Reply, RD1} = send_response_range(ReqData#wm_reqdata.response_code, ReqData),
+    NewLogData = (RD1#wm_reqdata.log_data)#wm_log_data{finish_time=os:timestamp()},
+    {Reply, RD1#wm_reqdata{log_data=NewLogData}}.
+
+send_response_range(200, ReqData) ->
+    {Range, RangeRD} = get_range(ReqData),
+    case Range of
+        X when X =:= undefined; X =:= fail ->
+            send_response_code(200, all, RangeRD);
+        Ranges ->
+            case get_resp_body_size(wrq:resp_body(RangeRD)) of
+                {ok, Size, Body1} ->
+                    RangeRD1 = wrq:set_resp_body(Body1, RangeRD),
+                    case range_parts(Ranges, Size) of
+                        [] ->
+                            %% no valid ranges
+                            %% could be 416, for now we'll just return 200 and the whole body
+                            send_response_code(200, all, RangeRD1);
+                        PartList ->
+                            ContentType = get_outheader_value("content-type", RangeRD1), 
+                            {RangeHeaders, Boundary} = get_range_headers(PartList, Size, ContentType),
+                            RespHdrsRD = wrq:set_resp_headers(RangeHeaders, RangeRD1),
+                            send_response_code(206, {PartList, Size, Boundary, ContentType}, RespHdrsRD)
+                    end;
+                {error, nosize} ->
+                    send_response_code(200, all, RangeRD)
+            end
+    end;
+send_response_range(Code, ReqData) ->
+    send_response_code(Code, all, ReqData).
+
+send_response_code(Code, Parts, ReqData) ->
+    ReqData1 = wrq:set_response_code(Code, ReqData),
+    LogData = (ReqData1#wm_reqdata.log_data)#wm_log_data{response_code=Code, response_length=0},
+    send_response_bodyfun(wrq:resp_body(ReqData1), Code, Parts, ReqData, LogData).
+
+
+send_response_bodyfun({device, IO}, Code, Parts, ReqData, LogData) ->
+    Length = iodevice_size(IO),
+    send_response_bodyfun({device, Length, IO}, Code, Parts, ReqData, LogData);
+send_response_bodyfun({device, Length, IO}, Code, all, ReqData, LogData) ->
+    Writer = fun() -> send_device_body(ReqData#wm_reqdata.socket, Length, IO) end,
+    send_response_headers(Code, Length, undefined, Writer, ReqData, LogData);
+send_response_bodyfun({device, _Length, IO}, Code, Parts, ReqData, LogData) ->
+    Writer = fun() -> send_device_body_parts(ReqData#wm_reqdata.socket, Parts, IO) end,
+    send_response_headers(Code, undefined, undefined, Writer, ReqData, LogData);
+send_response_bodyfun({file, Filename}, Code, Parts, ReqData, LogData) ->
+    Length = filelib:file_size(Filename),
+    send_response_bodyfun({file, Length, Filename}, Code, Parts, ReqData, LogData);
+send_response_bodyfun({file, Length, Filename}, Code, all, ReqData, LogData) ->
+    Writer = fun() -> send_file_body(ReqData#wm_reqdata.socket, Length, Filename) end,
+    send_response_headers(Code, Length, undefined, Writer, ReqData, LogData);
+send_response_bodyfun({file, _Length, Filename}, Code, Parts, ReqData, LogData) ->
+    Writer = fun() -> send_file_body_parts(ReqData#wm_reqdata.socket, Parts, Filename) end,
+    send_response_headers(Code, undefined, undefined, Writer, ReqData, LogData);
+send_response_bodyfun({stream, StreamFun}, Code, all, ReqData, LogData) ->
+    Writer = fun() -> send_stream_body(ReqData#wm_reqdata.socket, is_chunked_transfer(wrq:version(ReqData), chunked), StreamFun) end,
+    send_response_headers(Code, undefined, chunked, Writer, ReqData, LogData);
+send_response_bodyfun({stream, Size, Fun}, Code, all, ReqData, LogData) ->
+    Writer = fun() -> send_stream_body(ReqData#wm_reqdata.socket, is_chunked_transfer(wrq:version(ReqData), chunked), Fun(0, Size-1)) end,
+    send_response_headers(Code, undefined, chunked, Writer, ReqData, LogData);
+send_response_bodyfun({writer, WriterFun}, Code, all, ReqData, LogData) ->
+    Writer = fun() -> send_writer_body(ReqData#wm_reqdata.socket, is_chunked_transfer(wrq:version(ReqData), chunked), WriterFun) end,
+    send_response_headers(Code, undefined, chunked, Writer, ReqData, LogData);
+send_response_bodyfun(Body, Code, all, ReqData, LogData) ->
+    Length = iolist_size(Body),
+    Writer = fun() -> send(ReqData#wm_reqdata.socket, Body), Length end,
+    send_response_headers(Code, Length, undefined, Writer, ReqData, LogData);
+send_response_bodyfun(Body, Code, Parts, ReqData, LogData) ->
+    Writer = fun() -> send_parts(ReqData#wm_reqdata.socket, Body, Parts) end,
+    send_response_headers(Code, undefined, undefined, Writer, ReqData, LogData).
+
+
+send_response_headers(Code, Length, Transfer, Writer, ReqData, LogData) ->
+    send(ReqData#wm_reqdata.socket,
+        [make_version(wrq:version(ReqData)),
+         make_code(Code), <<"\r\n">> | 
+         make_headers(Code, Transfer, Length, ReqData)]),
+    send_response_body_data(wrq:method(ReqData), Writer, ReqData, LogData).
+
+send_response_body_data('HEAD', _Writer, ReqData, LogData) ->
+    {ok, ReqData#wm_reqdata{log_data=LogData}};
+send_response_body_data(_Method, Writer, ReqData, LogData) ->
+    Written = Writer(),
+    {ok, ReqData#wm_reqdata{log_data=LogData#wm_log_data{response_length=Written}}}.
+    
 
 send_stream_body(Socket, IsChunked, X) -> 
     send_stream_body(Socket, IsChunked, X, 0).
@@ -145,99 +226,195 @@ send_stream_body(Socket, IsChunked, {Data, Next}, SoFar) ->
     send_stream_body(Socket, IsChunked, Next(), Size + SoFar).
 
 
-%% @todo Remove usage of the put/get to get the number of bytes written
-%%       Use a separate process to accumulate these counts
-send_writer_body(Socket, IsChunked, {Encoder, Charsetter, BodyFun}) ->
-    put(bytes_written, 0),
+send_writer_body(Socket, IsChunked, BodyFun) ->
+    CounterPid = spawn_link(fun counter_process/0),
     Writer = fun(Data) ->
-        Size = send_chunk(Socket, IsChunked, Encoder(Charsetter(Data))),
-        put(bytes_written, get(bytes_written) + Size),
+        Size = send_chunk(Socket, IsChunked, Data),
+        CounterPid ! {sent, Size},
         Size
     end,
     BodyFun(Writer),
     send_chunk(Socket, IsChunked, <<>>),
-    get(bytes_written).
+    CounterPid ! {total, self()},
+    receive
+        {total, Total} ->
+            Total
+    end.
 
+counter_process() ->
+    counter_process_loop(0).
 
-%% @todo Distinguish between HTTP/1.0 and 1.1
-%%       HTTP/1.0 should not add the size (and transfer-encoding: chunked)
-send_chunk(Socket, true, Data) ->
-    Size = iolist_size(Data),
-    send(Socket, mochihex:to_hex(Size)),
-    send(Socket, <<"\r\n">>),
+counter_process_loop(N) ->
+    receive 
+        {sent, N1} ->
+            counter_process_loop(N+N1);
+        {total, From} ->
+            From ! {total, N}
+    end.
+
+send_device_body(Socket, Length, IO) ->
+    send_file_body_loop(Socket, 0, Length, IO).
+
+send_file_body(Socket, Length, Filename) ->
+    send_file_body(mochiweb_socket:type(Socket), Socket, Length, Filename).
+
+send_file_body(ssl, Socket, Length, Filename) ->
+    send_file_body_read(Socket, Length, Filename);
+send_file_body(plain, Socket, Length, Filename) ->
+    case erlang:function_exported(file, sendfile, 5) of
+        true ->
+            {ok, FD} = file:open(Filename, [raw,binary]),
+            {ok, Bytes} = file:sendfile(FD, Socket, 0, Length, []),
+            file:close(FD),
+            Bytes;
+        false ->
+            send_file_body_read(Socket, Length, Filename)
+    end.
+
+send_file_body_read(Socket, Length, Filename) ->
+    {ok, FD} = file:open(Filename, [raw,binary]),
+    Bytes = send_file_body_loop(Socket, 0, Length, FD),
+    file:close(FD),
+    Bytes.
+
+send_file_body_loop(_Socket, Offset, Size, _Device) when Offset =:= Size ->
+    Size;
+send_file_body_loop(Socket, Offset, Size, Device) when Size - Offset =< ?FILE_CHUNK_LENGTH ->
+    {ok, Data} = file:read(Device, Size - Offset),
     send(Socket, Data),
-    send(Socket, <<"\r\n">>),
+    Size;
+send_file_body_loop(Socket, Offset, Size, Device) ->
+    {ok, Data} = file:read(Device, ?FILE_CHUNK_LENGTH),
+    send(Socket, Data),
+    send_file_body_loop(Socket, Offset+?FILE_CHUNK_LENGTH, Size, Device).
+
+
+send_device_body_parts(Socket, {[{From,Length}], _Size, _Boundary, _ContentType}, IO) ->
+    {ok, _} = file:position(IO, From), 
+    send_file_body_loop(Socket, 0, Length, IO);
+send_device_body_parts(Socket, {Parts, Size, Boundary, ContentType}, IO) ->
+    Bytes = [
+        begin
+            {ok, _} = file:position(IO, From), 
+            send(Socket, part_preamble(Boundary, ContentType, From, Length, Size)),
+            B = send_file_body_loop(Socket, 0, Length, IO),
+            send(Socket, <<"\r\n">>),
+            B
+        end
+        || {From,Length} <- Parts
+    ],
+    send(Socket, end_boundary(Boundary)),
+    lists:sum(Bytes).
+
+
+send_file_body_parts(Socket, Parts, Filename) ->
+    send_file_body_parts(mochiweb_socket:type(Socket), Socket, Parts, Filename).
+
+send_file_body_parts(ssl, Socket, Parts, Filename) ->
+    send_file_body_parts_read(Socket, Parts, Filename);
+send_file_body_parts(plain, Socket, Parts, Filename) ->
+    case erlang:function_exported(file, sendfile, 5) of
+        true ->
+            send_file_body_parts_sendfile(Socket, Parts, Filename);
+        false ->
+            send_file_body_parts_read(Socket, Parts, Filename)
+    end.
+
+send_file_body_parts_sendfile(Socket, {[{From,Length}], _Size, _Boundary, _ContentType}, Filename) ->
+    {ok, FD} = file:open(Filename, [raw,binary]),
+    {ok, Bytes} = file:sendfile(FD, Socket, From, Length, []),
+    file:close(FD),
+    Bytes;
+send_file_body_parts_sendfile(Socket, {Parts, Size, Boundary, ContentType}, Filename) ->
+    {ok, FD} = file:open(Filename, [raw,binary]),
+    Bytes = [
+        begin
+            send(Socket, part_preamble(Boundary, ContentType, From, Length, Size)),
+            {ok, B} = file:sendfile(FD, Socket, From, Length, []),
+            send(Socket, <<"\r\n">>),
+            B
+        end
+        || {From,Length} <- Parts
+    ],
+    send(Socket, end_boundary(Boundary)),
+    file:close(FD),
+    lists:sum(Bytes).
+
+send_file_body_parts_read(Socket, Parts, Filename) ->
+    {ok, FD} = file:open(Filename, [raw,binary]),
+    Bytes = send_device_body_parts(Socket, Parts, FD),
+    file:close(FD),
+    Bytes.
+
+
+send_parts(Socket, Bin, {[{From,To}], _Size, _Boundary, _ContentType}) ->
+    send(Socket, binary:part(Bin,From,To-From+1));
+send_parts(Socket, Bin, {Parts, Size, Boundary, ContentType}) ->
+    Bytes = [
+        send_part_boundary(Socket, From, To, Size, binary:part(Bin,From,To-From+1), Boundary, ContentType)
+        || {From,To} <- Parts
+    ],
+    send(Socket, end_boundary(Boundary)),
+    lists:sum(Bytes).
+
+send_part_boundary(Socket, From, To, Size, Bin, Boundary, ContentType) ->
+    send(Socket, [
+            part_preamble(Boundary, ContentType, From, To, Size),
+            Bin, <<"\r\n">>
+        ]),
+    size(Bin).
+
+
+
+send_chunk(Socket, true, Data) ->
+    Data1 = iolist_to_binary(Data),
+    Size = size(Data1),
+    _ = send(Socket, mochihex:to_hex(Size)),
+    _ = send(Socket, <<"\r\n">>),
+    _ = send(Socket, Data1),
+    _ = send(Socket, <<"\r\n">>),
     Size;
 send_chunk(_Socket, false, <<>>) ->
     0;
 send_chunk(Socket, false, Data) ->
-    Size = iolist_size(Data),
-    send(Socket, Data),
+    Data1 = iolist_to_binary(Data),
+    Size = size(Data1),
+    _ = send(Socket, Data1),
     Size.
 
-
-send_response(ReqData) ->
-	{Reply, RD1} = case ReqData#wm_reqdata.response_code of
-        200 -> send_ok_response(ReqData);
-        Code -> send_response(Code, ReqData)
-    end,
-    LogData = RD1#wm_reqdata.log_data,
-    NewLogData = LogData#wm_log_data{finish_time=os:timestamp()},
-    {Reply, RD1#wm_reqdata{log_data=NewLogData}}.
-
-send_ok_response(ReqData) ->
-    {Range, RangeRD} = get_range(ReqData),
-    case Range of
-	X when X =:= undefined; X =:= fail ->
-	    send_response(200, RangeRD);
-	Ranges ->
-	    {PartList, Size} = range_parts(RangeRD, Ranges),
-	    case PartList of
-		[] -> %% no valid ranges
-		    %% could be 416, for now we'll just return 200
-		    send_response(200, RangeRD);
-		PartList ->
-		    {RangeHeaders, RangeBody} = parts_to_body(PartList, Size, RangeRD),
-            RespHdrsRD = wrq:set_resp_headers([{"Accept-Ranges", "bytes"} | RangeHeaders], RangeRD),
-            RespBodyRD = wrq:set_resp_body(RangeBody, RespHdrsRD),
-		    send_response(206, RespBodyRD)
-	    end
-    end.
-
-send_response(Code, ReqData) ->
-    Body0 = wrq:resp_body(ReqData),
-    {Body, Transfer, Length} = case Body0 of
-        {stream, StreamBody} -> {{stream, StreamBody}, chunked, undefined};
-        {writer, WriteBody} -> {{writer, WriteBody}, chunked, undefined};
-        {stream, Size, Fun} -> {{stream, Fun(0, Size-1)}, chunked, undefined};
-        _ -> {Body0, undefined, iolist_size([Body0])}
-    end,
-    send(ReqData#wm_reqdata.socket,
-        [make_version(wrq:version(ReqData)),
-         make_code(Code), <<"\r\n">> | 
-         make_headers(Code, Transfer, Length, ReqData)]),
-    FinalLength = case wrq:method(ReqData) of 
-	'HEAD' ->
-	    Length;
-	_ -> 
-        case Body of
-            {stream, Body2} ->
-                send_stream_body(ReqData#wm_reqdata.socket, is_chunked_transfer(wrq:version(ReqData), Transfer), Body2);
-            {writer, Body2} ->
-                send_writer_body(ReqData#wm_reqdata.socket, is_chunked_transfer(wrq:version(ReqData), Transfer), Body2);
-            _ ->
-                send(ReqData#wm_reqdata.socket, Body),
-                Length
-        end
-    end,
-    InitLogData = ReqData#wm_reqdata.log_data,
-    FinalLogData = InitLogData#wm_log_data{response_code=Code,response_length=FinalLength},
-    ReqData1 = wrq:set_response_code(Code, ReqData),
-    {ok, ReqData1#wm_reqdata{log_data=FinalLogData}}.
-    
+send(undefined, _Data) ->
+    ok;
+send(Socket, Bin) when is_binary(Bin) ->
+    case mochiweb_socket:send(Socket, Bin) of
+        ok -> ok;
+        {error,closed} -> ok;
+        _ -> exit(normal)
+    end;
+send(Socket, IoList) when is_list(IoList) ->
+    send(Socket, iolist_to_binary(IoList)).
 
 
-%% @doc  Infer body length from transfer-encoding and content-length headers.
+get_resp_body_size({device, Size, _} = Body) ->
+    {ok, Size, Body};
+get_resp_body_size({device, IO}) ->
+    Length = iodevice_size(IO),
+    {ok, Length, {device, Length, IO}};
+get_resp_body_size({file, Size, _} = Body) ->
+    {ok, Size, Body};
+get_resp_body_size({file, Filename}) ->
+    Length = filelib:file_size(Filename),
+    {ok, Length, {file, Length, Filename}};
+get_resp_body_size(B) when is_binary(B) ->
+    {ok, size(B), B};
+get_resp_body_size(L) when is_list(L) ->
+    B = iolist_to_binary(L),
+    {ok, size(B), B};
+get_resp_body_size(_) ->
+    {error, nosize}.
+
+
+%% @doc Infer incoming body length from transfer-encoding and content-length headers.
+%% @todo Should support gzip/compressed tranfer-encoding
 body_length(ReqData) ->
     case get_header_value("transfer-encoding", ReqData) of
         undefined ->
@@ -273,10 +450,10 @@ read_whole_stream({Hunk,Next}, Acc0, MaxRecvBody, SizeAcc) ->
 recv_stream_body(ReqData, MaxHunkSize) ->
     put(mochiweb_request_recv, true),
     case get_header_value("expect", ReqData) of
-	"100-continue" ->
-	    send(ReqData#wm_reqdata.socket, [make_version(wrq:version(ReqData)), make_code(100), <<"\r\n\r\n">>]);
-	_Else ->
-	    ok
+        "100-continue" ->
+            send(ReqData#wm_reqdata.socket, [make_version(wrq:version(ReqData)), make_code(100), <<"\r\n\r\n">>]);
+        _Else ->
+            ok
     end,
     case body_length(ReqData) of
         {unknown_transfer_encoding, X} -> exit({unknown_transfer_encoding, X});
@@ -336,74 +513,31 @@ read_chunk_length(Socket) ->
 
 get_range(ReqData) ->
     case get_header_value("range", ReqData) of
-	undefined ->
-	    {undefined, ReqData#wm_reqdata{range=undefined}};
-	RawRange ->
-	    Range = parse_range_request(RawRange),
-	    {Range, ReqData#wm_reqdata{range=Range}}
+        undefined ->
+            {undefined, ReqData#wm_reqdata{range=undefined}};
+        RawRange ->
+            Range = parse_range_request(RawRange),
+            {Range, ReqData#wm_reqdata{range=Range}}
     end.
 
 
-range_parts(_RD=#wm_reqdata{resp_body={file, IoDevice}}, Ranges) ->
-    Size = iodevice_size(IoDevice),
-    F = fun (Spec, Acc) ->
-                case range_skip_length(Spec, Size) of
-                    invalid_range ->
-                        Acc;
-                    V ->
-                        [V | Acc]
-                end
-        end,
-    LocNums = lists:foldr(F, [], Ranges),
-    {ok, Data} = file:pread(IoDevice, LocNums),
-    Bodies = lists:zipwith(fun ({Skip, Length}, PartialBody) ->
-                                   {Skip, Skip + Length - 1, PartialBody}
-                           end,
-                           LocNums, Data),
-    {Bodies, Size};
+% Map request ranges to byte ranges.
+range_parts(Ranges, Size) ->
+    Ranges1 = [ range_skip_length(Spec, Size) || Spec <- Ranges ],
+    [ R || R <- Ranges1, R =/= invalid_range ].
 
-range_parts(RD=#wm_reqdata{resp_body={stream, {Hunk,Next}}}, Ranges) ->
-    % for now, streamed bodies are read in full for range requests
-    MRB = RD#wm_reqdata.max_recv_body,
-    range_parts(read_whole_stream({Hunk,Next}, [], MRB, 0), Ranges);
-
-range_parts(_RD=#wm_reqdata{resp_body={stream, Size, StreamFun}}, Ranges) ->
-    SkipLengths = [ range_skip_length(R, Size) || R <- Ranges],
-    {[ {Skip, Skip+Length-1, StreamFun} || {Skip, Length} <- SkipLengths ],
-     Size};
-
-range_parts(_RD=#wm_reqdata{resp_body=Body0}, Ranges) ->
-    range_parts(Body0, Ranges);
-
-range_parts(Body0, Ranges) when is_binary(Body0); is_list(Body0) ->
-    Body = iolist_to_binary(Body0),
-    Size = size(Body),
-    F = fun(Spec, Acc) ->
-                case range_skip_length(Spec, Size) of
-                    invalid_range ->
-                        Acc;
-                    {Skip, Length} ->
-                        <<_:Skip/binary, PartialBody:Length/binary, _/binary>> = Body,
-                        [{Skip, Skip + Length - 1, PartialBody} | Acc]
-                end
-        end,
-    {lists:foldr(F, [], Ranges), Size}.
-
-range_skip_length(Spec, Size) ->
-    case Spec of
-        {none, R} when R =< Size, R >= 0 ->
-            {Size - R, R};
-        {none, _OutOfRange} ->
-            {0, Size};
-        {R, none} when R >= 0, R < Size ->
-            {R, Size - R};
-        {_OutOfRange, none} ->
-            invalid_range;
-        {Start, End} when 0 =< Start, Start =< End, End < Size ->
-            {Start, End - Start + 1};
-        {_OutOfRange, _End} ->
-            invalid_range
-    end.
+range_skip_length({none, R}, Size) when R =< Size, R >= 0 ->
+    {Size - R, R};
+range_skip_length({none, _OutOfRange}, Size) ->
+    {0, Size};
+range_skip_length({R, none}, Size) when R >= 0, R < Size ->
+    {R, Size - R};
+range_skip_length({_OutOfRange, none}, _Size) ->
+    invalid_range;
+range_skip_length({Start, End}, Size) when 0 =< Start, Start =< End, End < Size ->
+    {Start, End - Start + 1};
+range_skip_length({_OutOfRange, _End}, _Size) ->
+    invalid_range.
 
 parse_range_request(RawRange) when is_list(RawRange) ->
     try
@@ -425,97 +559,33 @@ parse_range_request(RawRange) when is_list(RawRange) ->
             fail
     end.
 
-parts_to_body([{Start, End, Body0}], Size, ReqData) ->
-    %% return body for a range reponse with a single body
-    ContentType = 
-	case get_outheader_value("content-type", ReqData) of
-	    undefined -> "text/html";
-	    CT -> CT
-	end,
-    HeaderList = [{"Content-Type", ContentType},
-                  {"Content-Range",
-                   ["bytes ",
-                    make_io(Start), "-", make_io(End),
-                    "/", make_io(Size)]}],
-    Body = if is_function(Body0) ->
-                   {stream, Body0(Start, End)};
-              true ->
-                   Body0
-           end,
-    {HeaderList, Body};
-parts_to_body(BodyList, Size, ReqData) when is_list(BodyList) ->
-    %% return
-    %% header Content-Type: multipart/byteranges; boundary=441934886133bdee4
-    %% and multipart body
-    ContentType = 
-	case get_outheader_value("content-type", ReqData) of
-	    undefined -> "text/html";
-	    CT -> CT
-	end,
-    Boundary = mochihex:to_hex(crypto:rand_bytes(8)),
-    HeaderList = [{"Content-Type",
-                   ["multipart/byteranges; ",
-                    "boundary=", Boundary]}],
-    MultiPartBody = case hd(BodyList) of
-                        {_, _, Fun} when is_function(Fun) ->
-                            stream_multipart_body(BodyList, ContentType,
-                                                  Boundary, Size);
-                        _ ->
-                            multipart_body(BodyList, ContentType,
-                                           Boundary, Size)
-                    end,
-    {HeaderList, MultiPartBody}.
 
-multipart_body([], _ContentType, Boundary, _Size) ->
-    end_boundary(Boundary);
-multipart_body([{Start, End, Body} | BodyList], ContentType, Boundary, Size) ->
-    [part_preamble(Boundary, ContentType, Start, End, Size),
-     Body, <<"\r\n">>
-      | multipart_body(BodyList, ContentType, Boundary, Size)].
+get_range_headers([{Start, Length}], Size, _ContentType) ->
+    HeaderList = [{"Accept-Ranges", "bytes"},
+                  {"Content-Range", ["bytes ", make_io(Start), "-", make_io(Start+Length-1), "/", make_io(Size)]},
+                  {"Content-Length", make_io(Length)}],
+    {HeaderList, none};
+get_range_headers(Parts, Size, ContentType) when is_list(Parts) ->
+    Boundary = mochihex:to_hex(crypto:rand_bytes(8)),
+    Lengths = [
+        iolist_size(part_preamble(Boundary, ContentType, Start, Length, Size)) + Length + 2
+        || {Start,Length} <- Parts
+    ],
+    TotalLength = lists:sum(Lengths) + iolist_size(end_boundary(Boundary)), 
+    HeaderList = [{"Accept-Ranges", "bytes"},
+                  {"Content-Type", ["multipart/byteranges; ", "boundary=", Boundary]},
+                  {"Content-Length", make_io(TotalLength)}],
+    {HeaderList, Boundary}.
 
 boundary(B)     -> [<<"--">>, B, <<"\r\n">>].
 end_boundary(B) -> [<<"--">>, B, <<"--\r\n">>].
 
-part_preamble(Boundary, CType, Start, End, Size) ->
+part_preamble(Boundary, CType, Start, Length, Size) ->
     [boundary(Boundary),
-     <<"Content-Type: ">>, CType, <<"\r\n">>,
-     <<"Content-Range: bytes ">>,
-     mochiweb_util:make_io(Start), <<"-">>, mochiweb_util:make_io(End),
-     <<"/">>, mochiweb_util:make_io(Size),
+     <<"Content-Type: ">>, CType,
+     <<"\r\nContent-Range: bytes ">>, make_io(Start), <<"-">>, make_io(Start+Length-1), <<"/">>, make_io(Size),
      <<"\r\n\r\n">>].
 
-stream_multipart_body(BodyList, ContentType, Boundary, Size) ->
-    Helper = stream_multipart_body_helper(
-               BodyList, ContentType, Boundary, Size),
-    %% executing Helper() here is an optimization;
-    %% it's just as valid to say {<<>>, Helper}
-    {stream, Helper()}.
-
-stream_multipart_body_helper([], _CType, Boundary, _Size) ->
-    fun() -> {end_boundary(Boundary), done} end;
-stream_multipart_body_helper([{Start, End, Fun}|Rest],
-                             CType, Boundary, Size) ->
-    fun() ->
-            {part_preamble(Boundary, CType, Start, End, Size),
-             stream_multipart_part_helper(
-               fun() -> Fun(Start, End) end,
-               Rest, CType, Boundary, Size)}
-    end.
-
-stream_multipart_part_helper(Fun, Rest, CType, Boundary, Size) ->
-    fun() ->
-            case Fun() of
-                {Data, done} ->
-                    %% when this part is done, start the next part
-                    {[Data, <<"\r\n">>],
-                     stream_multipart_body_helper(
-                       Rest, CType, Boundary, Size)};
-                {Data, Next} ->
-                    %% this subpart has more data coming
-                    {Data, stream_multipart_part_helper(
-                             Next, Rest, CType, Boundary, Size)}
-            end
-    end.
 
 iodevice_size(IoDevice) ->
     {ok, Size} = file:position(IoDevice, eof),
@@ -565,14 +635,14 @@ make_headers(Code, Transfer, Length, RD) ->
     {ok, ServerHeader} = application:get_env(webzmachine, server_header),
     WithSrv = mochiweb_headers:enter("Server", ServerHeader, Hdrs0),
     Hdrs = case mochiweb_headers:get_value("date", WithSrv) of
-	undefined ->
+        undefined ->
             mochiweb_headers:enter("Date", httpd_util:rfc1123_date(), WithSrv);
-	_ ->
-	    WithSrv
+        _ ->
+            WithSrv
     end,
     F = fun({K, V}, Acc) ->
-		[make_io(K), <<": ">>, V, <<"\r\n">> | Acc]
-	end,
+                [make_io(K), <<": ">>, V, <<"\r\n">> | Acc]
+        end,
     lists:foldl(F, [<<"\r\n">>], mochiweb_headers:to_list(Hdrs)).
 
 
@@ -686,11 +756,19 @@ do_redirect(ReqData) -> wrq:do_redirect(true, ReqData).
 
 resp_redirect(ReqData) -> wrq:resp_redirect(ReqData).
 
+get_metadata('chosen-charset', ReqData) ->
+     wrq:resp_chosen_charset(ReqData);
+get_metadata('content-encoding', ReqData) ->
+     wrq:resp_content_encoding(ReqData);
+get_metadata('transfer-encoding', ReqData) ->
+     wrq:resp_transfer_encoding(ReqData);
+get_metadata('content-type', ReqData) ->
+     wrq:resp_content_type(ReqData);
 get_metadata(Key, ReqData) ->
     case dict:find(Key, ReqData#wm_reqdata.metadata) of
-		{ok, Value} -> Value;
-		error -> undefined
-	end.
+                {ok, Value} -> Value;
+                error -> undefined
+        end.
 
 set_metadata(Key, Value, ReqData) ->
     NewDict = dict:store(Key, Value, ReqData#wm_reqdata.metadata),

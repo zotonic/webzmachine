@@ -28,6 +28,14 @@
          append_to_resp_body/2,append_to_response_body/2,
          max_recv_body/1,set_max_recv_body/2,
          get_cookie_value/2,get_qs_value/2,get_qs_value/3,set_peer/2]).
+-export([
+    resp_transfer_encoding/1, set_resp_transfer_encoding/2,
+    resp_content_encoding/1, set_resp_content_encoding/2,
+    resp_content_type/1, set_resp_content_type/2,
+    resp_chosen_charset/1, set_resp_chosen_charset/2,
+
+    encode_content/2
+    ]).
 
 % @type reqdata(). The opaque data type used for req/resp data structures.
 -include("wm_reqdata.hrl").
@@ -151,11 +159,35 @@ resp_redirect(_RD = #wm_reqdata{resp_redirect=false}) -> false.
 resp_headers(_RD = #wm_reqdata{resp_headers=RespH}) -> RespH. % mochiheaders
 
 resp_body(_RD = #wm_reqdata{resp_body=undefined}) -> undefined;
-resp_body(_RD = #wm_reqdata{resp_body={stream,X}}) -> {stream,X};
-resp_body(_RD = #wm_reqdata{resp_body={stream,X,Y}}) -> {stream,X,Y};
-resp_body(_RD = #wm_reqdata{resp_body={writer,X}}) -> {writer,X};
+resp_body(_RD = #wm_reqdata{resp_body={file,_}=F}) -> F;
+resp_body(_RD = #wm_reqdata{resp_body={file,_,_}=F}) -> F;
+resp_body(_RD = #wm_reqdata{resp_body={device,_}=D}) -> D;
+resp_body(_RD = #wm_reqdata{resp_body={device,_,_}=D}) -> D;
+resp_body(_RD = #wm_reqdata{resp_body={stream,_}=S}) -> S;
+resp_body(_RD = #wm_reqdata{resp_body={stream,_,_}=S}) -> S;
+resp_body(_RD = #wm_reqdata{resp_body={writer,_}=W}) -> W;
 resp_body(_RD = #wm_reqdata{resp_body=RespB}) when is_binary(RespB) -> RespB;
-resp_body(_RD = #wm_reqdata{resp_body=RespB}) -> iolist_to_binary(RespB).
+resp_body(_RD = #wm_reqdata{resp_body=Resp}) when is_list(Resp) -> iolist_to_binary(Resp).
+
+%% --
+
+resp_transfer_encoding(#wm_reqdata{resp_transfer_encoding=TransferEncoding}) -> TransferEncoding.
+resp_content_encoding(#wm_reqdata{resp_content_encoding=ContentEncoding}) -> ContentEncoding.
+resp_content_type(#wm_reqdata{resp_content_type=ContentType}) -> ContentType.
+resp_chosen_charset(#wm_reqdata{resp_chosen_charset=Charset}) -> Charset.
+
+set_resp_transfer_encoding(TE, RD) when is_list(TE) -> RD#wm_reqdata{resp_transfer_encoding=TE}.
+set_resp_content_encoding(CE, RD) -> RD#wm_reqdata{resp_content_encoding=CE}.
+set_resp_content_type(CT, RD) -> RD#wm_reqdata{resp_content_type=CT}.
+set_resp_chosen_charset(CS, RD) -> RD#wm_reqdata{resp_chosen_charset=CS}.
+
+%% @doc Utility function to encode the content using some well known content encodings.
+encode_content(Content, ReqData) ->
+    encode_content_1(wrq:resp_content_encoding(ReqData), Content).
+
+encode_content_1("gzip", Content) -> zlib:gzip(Content);
+encode_content_1("identity", Content) -> Content.
+
 
 %% --
 

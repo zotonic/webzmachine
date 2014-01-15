@@ -81,15 +81,24 @@ default(process_post) ->
     false;
 default(language_available) ->
     true;
+
+% The default setting is needed for non-charset responses such as image/png
+% An example of how one might do actual negotiation:
+%    ["iso-8859-1", "utf-8"];
 default(charsets_provided) ->
     no_charset; % this atom causes charset-negotation to short-circuit
-% the default setting is needed for non-charset responses such as image/png
-%    an example of how one might do actual negotiation
-%    [{"iso-8859-1", fun(X) -> X end}, {"utf-8", make_utf8}];
-default(encodings_provided) ->
-    [{"identity", fun(X) -> X end}];
-% this is handy for auto-gzip of GET-only resources:
-%    [{"identity", fun(X) -> X end}, {"gzip", fun(X) -> zlib:gzip(X) end}];
+
+% The content variations available to the controller.
+default(content_encodings_provided) ->
+    ["identity"];
+
+% How the content is transferred, this is handy for auto-gzip of GET-only resources.
+% "identity" and "chunked" are always available to HTTP/1.1 clients.
+% Example:
+%    [{"gzip", fun(X) -> zlib:gzip(X) end}];
+default(transfer_encodings_provided) ->
+    [{"gzip", fun(X) -> zlib:gzip(X) end}];
+
 default(variances) ->
     [];
 default(is_conflict) ->

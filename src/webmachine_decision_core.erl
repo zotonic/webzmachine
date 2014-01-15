@@ -38,22 +38,22 @@ handle_request(Resource, ReqData) ->
 %% @doc Call the controller or a default.
 %% @spec controller_call(atom(), Resource, ReqData) -> {term(), NewResource, NewReqData}
 controller_call(Fun, Rs, Rd) ->
-	case cacheable(Fun) of
-		true ->
-			case proplists:lookup(Fun, Rd#wm_reqdata.cache) of
-				none -> 
-					{T, Rs1, Rd1} = webmachine_controller:do(Fun, Rs, Rd),
-					{T, Rs1, Rd1#wm_reqdata{cache=[{Fun,T}|Rd1#wm_reqdata.cache]}};
-				{Fun, Cached} -> 
-					{Cached, Rs, Rd}
-			end;
-		false ->
-    		webmachine_controller:do(Fun, Rs, Rd)
-	end.
+    case cacheable(Fun) of
+        true ->
+            case proplists:lookup(Fun, Rd#wm_reqdata.cache) of
+                none -> 
+                    {T, Rs1, Rd1} = webmachine_controller:do(Fun, Rs, Rd),
+                    {T, Rs1, Rd1#wm_reqdata{cache=[{Fun,T}|Rd1#wm_reqdata.cache]}};
+                {Fun, Cached} -> 
+                    {Cached, Rs, Rd}
+            end;
+        false ->
+            webmachine_controller:do(Fun, Rs, Rd)
+    end.
 
 cacheable(charsets_provided) -> true;
 cacheable(content_types_provided) -> true;
-cacheable(encodings_provided) -> true;
+cacheable(content_encodings_provided) -> true;
 cacheable(last_modified) -> true;
 cacheable(generate_etag) -> true;
 cacheable(_) -> false.
@@ -71,6 +71,11 @@ d(DecisionID, Rs, Rd) ->
 
 respond(Code, Rs, Rd) ->
     {RsCode, RdCode} = case Code of
+        200 ->
+            case get_header_val("te", Rd) of
+                undefined -> {Rs,Rd};
+                TEHdr -> choose_transfer_encoding(TEHdr, Rs, Rd)
+            end;
         Code when Code =:= 403; Code =:= 404; Code =:= 410 ->
             {ok, ErrorHandler} = application:get_env(webzmachine, error_handler),
             Reason = {none, none, []},
@@ -112,11 +117,11 @@ decision_test({Test, Rs, Rd}, TestVal, TrueFlow, FalseFlow) ->
 
 decision_test(Test,TestVal,TrueFlow,FalseFlow, Rs, Rd) ->
     case Test of
-	{error, Reason} -> error_response(Reason, Rs, Rd);
-	{error, Reason0, Reason1} -> error_response({Reason0, Reason1}, Rs, Rd);
-	{halt, Code} -> respond(Code, Rs, Rd);
-	TestVal -> decision_flow(TrueFlow, Test, Rs, Rd);
-	_ -> decision_flow(FalseFlow, Test, Rs, Rd)
+    {error, Reason} -> error_response(Reason, Rs, Rd);
+    {error, Reason0, Reason1} -> error_response({Reason0, Reason1}, Rs, Rd);
+    {halt, Code} -> respond(Code, Rs, Rd);
+    TestVal -> decision_flow(TrueFlow, Test, Rs, Rd);
+    _ -> decision_flow(FalseFlow, Test, Rs, Rd)
     end.
 
 decision_test_fn({Test, Rs, Rd}, TestFn, TrueFlow, FalseFlow) ->
@@ -150,9 +155,9 @@ do_log(LogData) ->
     end,
     case application:get_env(webzmachine, perf_log_dir) of
         {ok, _} ->
-	       spawn(webmachine_perf_logger, log, [LogData]);
-	   _ ->
-	       ignore
+           spawn(webmachine_perf_logger, log, [LogData]);
+       _ ->
+           ignore
     end.
 
 
@@ -160,7 +165,7 @@ do_log(LogData) ->
 %% "Service Available"
 decision(v3b13, Rs, Rd) ->
     decision_test(controller_call(ping, Rs, Rd), pong, v3b13b, 503);
-decision(v3b13b, Rs, Rd) ->	
+decision(v3b13b, Rs, Rd) -> 
     decision_test(controller_call(service_available, Rs, Rd), true, v3b12, 503);
 %% "Known method?"
 decision(v3b12, Rs, Rd) ->
@@ -173,11 +178,11 @@ decision(v3b11, Rs, Rd) ->
 decision(v3b10, Rs, Rd) ->
     {Methods, Rs1, Rd1} = controller_call(allowed_methods, Rs, Rd),
     case lists:member(method(Rd1), Methods) of
-	true ->
-	    d(v3b9, Rs1, Rd1);
-	false ->
-	    RdAllow = wrq:set_resp_header("Allow", string:join([atom_to_list(M) || M <- Methods], ", "), Rd1),
-	    respond(405, Rs1, RdAllow)
+    true ->
+        d(v3b9, Rs1, Rd1);
+    false ->
+        RdAllow = wrq:set_resp_header("Allow", string:join([atom_to_list(M) || M <- Methods], ", "), Rd1),
+        respond(405, Rs1, RdAllow)
     end;
 %% "Malformed?"
 decision(v3b9, Rs, Rd) ->
@@ -186,12 +191,12 @@ decision(v3b9, Rs, Rd) ->
 decision(v3b8, Rs, Rd) ->
     {IsAuthorized, Rs1, Rd1} = controller_call(is_authorized, Rs, Rd),
     case IsAuthorized of
-	true -> 
-	    d(v3b7, Rs1, Rd1);
-	{error, Reason} ->
-	    error_response(Reason, Rs1, Rd1);
-	{halt, Code}  ->
-	    respond(Code, Rs1, Rd1);
+    true -> 
+        d(v3b7, Rs1, Rd1);
+    {error, Reason} ->
+        error_response(Reason, Rs1, Rd1);
+    {halt, Code}  ->
+        respond(Code, Rs1, Rd1);
     AuthHead ->
         RdAuth = wrq:set_resp_header("WWW-Authenticate", AuthHead, Rd1),
         respond(401, Rs1, RdAuth)
@@ -202,28 +207,28 @@ decision(v3b7, Rs, Rd) ->
 %% "Upgrade?"
 decision(v3b6_upgrade, Rs, Rd) ->
     case get_header_val("upgrade", Rd) of
-		undefined ->
-			decision(v3b6, Rs, Rd);
-		UpgradeHdr ->
-		    case get_header_val("connection", Rd) of
-				undefined ->
-					decision(v3b6, Rs, Rd);
-				Connection ->
-					case contains_token("upgrade", Connection) of
-						true ->
-							{Choosen, Rs1, Rd1} = choose_upgrade(UpgradeHdr, Rs, Rd),
-							case Choosen of
-								none ->
-									decision(v3b6, Rs1, Rd1);
-								{_Protocol, UpgradeFunc} ->
-									%% TODO: log the upgrade action
-									{upgrade, UpgradeFunc, Rs1, Rd1}
-							end;
-						false ->
-							decision(v3b6, Rs, Rd)
-					end
-			end
-	end;
+        undefined ->
+            decision(v3b6, Rs, Rd);
+        UpgradeHdr ->
+            case get_header_val("connection", Rd) of
+                undefined ->
+                    decision(v3b6, Rs, Rd);
+                Connection ->
+                    case contains_token("upgrade", Connection) of
+                        true ->
+                            {Choosen, Rs1, Rd1} = choose_upgrade(UpgradeHdr, Rs, Rd),
+                            case Choosen of
+                                none ->
+                                    decision(v3b6, Rs1, Rd1);
+                                {_Protocol, UpgradeFunc} ->
+                                    %% TODO: log the upgrade action
+                                    {upgrade, UpgradeFunc, Rs1, Rd1}
+                            end;
+                        false ->
+                            decision(v3b6, Rs, Rd)
+                    end
+            end
+    end;
 %% "Okay Content-* Headers?"
 decision(v3b6, Rs, Rd) ->
     decision_test(controller_call(valid_content_headers, Rs, Rd), true, v3b5, 501);
@@ -236,22 +241,22 @@ decision(v3b4, Rs, Rd) ->
 %% "OPTIONS?"
 decision(v3b3, Rs, Rd) ->
     case wrq:method(Rd) of 
-	'OPTIONS' ->
-	    {Hdrs, Rs1, Rd1} = controller_call(options, Rs, Rd),
-	    respond(200, Hdrs, Rs1, Rd1);
-	_ ->
-	    d(v3c3, Rs, Rd)
+    'OPTIONS' ->
+        {Hdrs, Rs1, Rd1} = controller_call(options, Rs, Rd),
+        respond(200, Hdrs, Rs1, Rd1);
+    _ ->
+        d(v3c3, Rs, Rd)
     end;
 %% Accept exists?
 decision(v3c3, Rs, Rd) ->
     {ContentTypes, Rs1, Rd1} = controller_call(content_types_provided, Rs, Rd),
     PTypes = [Type || {Type,_Fun} <- ContentTypes],
     case get_header_val("accept", Rd1) of
-	undefined ->
-	    {ok, RdCT} = webmachine_request:set_metadata('content-type', hd(PTypes), Rd1),
-	    d(v3d4, Rs1, RdCT);
-	_ ->
-	    d(v3c4, Rs1, Rd1)
+    undefined ->
+        RdCT = wrq:set_resp_content_type(hd(PTypes), Rd1),
+        d(v3d4, Rs1, RdCT);
+    _ ->
+        d(v3c4, Rs1, Rd1)
     end;
 %% Acceptable media type available?
 decision(v3c4, Rs, Rd) ->
@@ -259,11 +264,11 @@ decision(v3c4, Rs, Rd) ->
     PTypes = [Type || {Type,_Fun} <- ContentTypesProvided],
     AcceptHdr = get_header_val("accept", Rd1),
     case webmachine_util:choose_media_type(PTypes, AcceptHdr) of
-	none ->
-	    respond(406, Rs1, Rd1);
-	MType ->
-	    {ok, RdCT} = webmachine_request:set_metadata('content-type', MType, Rd1),
-	    d(v3d4, Rs, RdCT)
+    none ->
+        respond(406, Rs1, Rd1);
+    MType ->
+        RdCT = wrq:set_resp_content_type(MType, Rd1),
+        d(v3d4, Rs, RdCT)
     end;
 %% Accept-Language exists?
 decision(v3d4, Rs, Rd) ->
@@ -283,19 +288,19 @@ decision(v3e6, Rs, Rd) ->
 %% Accept-Encoding exists?
 % (also, set content-type header here, now that charset is chosen)
 decision(v3f6, Rs, Rd) ->
-    CType = webmachine_request:get_metadata('content-type', Rd),
-    CSet = case webmachine_request:get_metadata('chosen-charset', Rd) of
+    CType = wrq:resp_content_type(Rd),
+    CSet = case wrq:resp_chosen_charset(Rd) of
                undefined -> "";
                CS -> "; charset=" ++ CS
            end,
     Rd1 = wrq:set_resp_header("Content-Type", CType ++ CSet, Rd),
     case get_header_val("accept-encoding", Rd1) of
-        undefined -> decision_test(choose_encoding("identity;q=1.0,*;q=0.5", Rs, Rd1), none, 406, v3g7);
+        undefined -> decision_test(choose_content_encoding("identity;q=1.0,*;q=0.5", Rs, Rd1), none, 406, v3g7);
         _ -> d(v3f7, Rs, Rd1)
     end;
 %% Acceptable encoding available?
 decision(v3f7, Rs, Rd) ->
-    decision_test(choose_encoding(get_header_val("accept-encoding", Rd), Rs, Rd), none, 406, v3g7);
+    decision_test(choose_content_encoding(get_header_val("accept-encoding", Rd), Rs, Rd), none, 406, v3g7);
 %% "Resource exists?"
 decision(v3g7, Rs, Rd) ->
     % this is the first place after all conneg, so set Vary here
@@ -337,15 +342,15 @@ decision(v3h12, Rs, Rd) ->
 decision(v3i4, Rs, Rd) ->
     {MovedPermanently, Rs1, Rd1} = controller_call(moved_permanently, Rs, Rd),
     case MovedPermanently of
-	{true, MovedURI} ->
-	    RdLoc = wrq:set_resp_header("Location", MovedURI, Rd1),
-	    respond(301, Rs1, RdLoc);
-	false ->
-	    d(v3p3, Rs1, Rd1);
-	{error, Reason} ->
-	    error_response(Reason, Rs1, Rd1);
-	{halt, Code} ->
-	    respond(Code, Rs1, Rd1)
+    {true, MovedURI} ->
+        RdLoc = wrq:set_resp_header("Location", MovedURI, Rd1),
+        respond(301, Rs1, RdLoc);
+    false ->
+        d(v3p3, Rs1, Rd1);
+    {error, Reason} ->
+        error_response(Reason, Rs1, Rd1);
+    {halt, Code} ->
+        respond(Code, Rs1, Rd1)
     end;
 %% PUT?
 decision(v3i7, Rs, Rd) ->
@@ -363,15 +368,15 @@ decision(v3j18, Rs, Rd) ->
 decision(v3k5, Rs, Rd) ->
     {MovedPermanently, Rs1, Rd1} = controller_call(moved_permanently, Rs, Rd),
     case MovedPermanently of
-	{true, MovedURI} ->
-	    RdLoc = wrq:set_resp_header("Location", MovedURI, Rd1),
-	    respond(301, Rs1, RdLoc);
-	false ->
-	    d(v3l5, Rs1, Rd1);
-	{error, Reason} ->
-	    error_response(Reason, Rs1, Rd1);
-	{halt, Code} ->
-	    respond(Code, Rs1, Rd1)
+    {true, MovedURI} ->
+        RdLoc = wrq:set_resp_header("Location", MovedURI, Rd1),
+        respond(301, Rs1, RdLoc);
+    false ->
+        d(v3l5, Rs1, Rd1);
+    {error, Reason} ->
+        error_response(Reason, Rs1, Rd1);
+    {halt, Code} ->
+        respond(Code, Rs1, Rd1)
     end;
 %% "Previously existed?"
 decision(v3k7, Rs, Rd) ->
@@ -389,15 +394,15 @@ decision(v3k13, Rs, Rd) ->
 decision(v3l5, Rs, Rd) ->
     {MovedTemporarily, Rs1, Rd1} = controller_call(moved_temporarily, Rs, Rd),
     case MovedTemporarily of
-	{true, MovedURI} ->
-	    RdLoc = wrq:set_resp_header("Location", MovedURI, Rd1),
-	    respond(307, Rs1, RdLoc);
-	false ->
-	    d(v3m5, Rs1, Rd1);
-	{error, Reason} ->
-	    error_response(Reason, Rs1, Rd1);
-	{halt, Code} ->
-	    respond(Code, Rs1, Rd1)
+    {true, MovedURI} ->
+        RdLoc = wrq:set_resp_header("Location", MovedURI, Rd1),
+        respond(307, Rs1, RdLoc);
+    false ->
+        d(v3m5, Rs1, Rd1);
+    {error, Reason} ->
+        error_response(Reason, Rs1, Rd1);
+    {halt, Code} ->
+        respond(Code, Rs1, Rd1)
     end;
 %% "POST?"
 decision(v3l7, Rs, Rd) ->
@@ -484,9 +489,7 @@ decision(v3n11, Rs, Rd) ->
         _ ->
             {ProcessPost, Rs2, Rd2} = controller_call(process_post, Rs1, Rd1),
             case ProcessPost of
-                true -> 
-                    {_, Rs3, Rd3} = encode_body_if_set(Rs2, Rd2),
-                    {stage1_ok, Rs3, Rd3};
+                true -> {stage1_ok, Rs2, Rd2};
                 {halt, Code} -> respond(Code, Rs2, Rd2);
                 Err -> error_response(Err, Rs2, Rd2)
             end
@@ -556,7 +559,7 @@ decision(v3o18, Rs, Rd) ->
                 Exp -> wrq:set_resp_header("Expires", httpd_util:rfc1123_date(calendar:universal_time_to_local_time(Exp)), RdExp0)
             end,
 
-            CT = webmachine_request:get_metadata('content-type', RdExp),
+            CT = wrq:resp_content_type(RdExp),
             {ContentTypesProvided, RsCT, RdCT} = controller_call(content_types_provided, RsExp, RdExp),
             F = hd([Fun || {Type,Fun} <- ContentTypesProvided, CT =:= Type]),
             controller_call(F, RsCT, RdCT);
@@ -569,8 +572,7 @@ decision(v3o18, Rs, Rd) ->
         {halt, Code} -> respond(Code, RsBody, RdBody);
         nop -> d(v3o18b, RsBody, RdBody);
         _ ->
-            {EncodedBody, RsEB, RdEB} = encode_body(FinalBody, RsBody, RdBody), 
-            d(v3o18b, RsEB, wrq:set_resp_body(EncodedBody, RdEB))
+            d(v3o18b, RsBody, wrq:set_resp_body(FinalBody, RdBody))
     end;
 
 decision(v3o18b, Rs, Rd) ->
@@ -614,77 +616,46 @@ accept_helper(Rs, Rd) ->
             {{respond, 415}, Rs1, Rd1};
         AcceptedContentList ->
             F = hd(AcceptedContentList),
-            {Result, Rs2, Rd2} = controller_call(F, Rs1, Rd1),
-            case Result of
-                true ->
-                    {_, RsEncoded, RdEncoded} = encode_body_if_set(Rs2, Rd2),
-                    {true, RsEncoded, RdEncoded};
-                _ -> 
-                    {Result, Rs2, Rd2}
-            end
+            controller_call(F, Rs1, Rd1)
     end.
 
-encode_body_if_set(Rs, Rd) ->
-    case webmachine_request:has_resp_body(Rd) of
-        true ->
-            Body = wrq:resp_body(Rd),
-            {Encoded, Rs1, Rd1} = encode_body(Body, Rs, Rd),
-            {true, Rs1, wrq:set_resp_body(Encoded, Rd1)};
-        _ -> 
-            {false, Rs, Rd}
+   
+choose_content_encoding(AccEncHdr, Rs, Rd) ->
+    {EncodingsProvided, Rs1, Rd1} = controller_call(content_encodings_provided, Rs, Rd),
+    case webmachine_util:choose_encoding(EncodingsProvided, AccEncHdr) of
+        none -> 
+            {none, Rs1, Rd1};
+        ChosenEnc ->
+            RdEnc = case ChosenEnc of
+                        "identity" -> Rd1;
+                        _ -> wrq:set_resp_header("Content-Encoding",ChosenEnc, Rd1)
+                    end,
+            RdEnc1 = wrq:set_resp_content_encoding(ChosenEnc,RdEnc),
+            {ChosenEnc, Rs1, RdEnc1}
     end.
 
-encode_body(Body, Rs, Rd) ->
-    ChosenCSet = webmachine_request:get_metadata('chosen-charset', Rd),
-    {CharSetsProvided, Rs1, Rd1} = controller_call(charsets_provided, Rs, Rd),
-    Charsetter = 
-        case CharSetsProvided of
-            no_charset -> fun(X) -> X end;
-            CP -> hd([Fun || {CSet,Fun} <- CP, ChosenCSet =:= CSet])
-        end,
-    ChosenEnc = webmachine_request:get_metadata('content-encoding', Rd1),
-    {EncodingsProvided, Rs2, Rd2} = controller_call(encodings_provided, Rs1, Rd1),
-    Encoder = hd([Fun || {Enc,Fun} <- EncodingsProvided, ChosenEnc =:= Enc]),
-    case Body of
-        {stream, StreamBody} ->
-            {{stream, make_encoder_stream(Encoder, Charsetter, StreamBody)}, Rs2, Rd2};
-        {stream, Size, Fun} ->
-            {stream, Size, make_size_encoder_stream(Encoder, Charsetter, Fun)};
-        {writer, BodyFun} ->
-            {{writer, {Encoder, Charsetter, BodyFun}}, Rs2, Rd2};
-        {writer, Size, BodyFun} ->
-            {{writer, Size, {Encoder, Charsetter, BodyFun}}, Rs2, Rd2};
-        _ ->
-            {Encoder(Charsetter(to_binary(Body))), Rs2, Rd2}
-    end.
-    
-    to_binary(Body) when is_tuple(Body) -> Body;
-    to_binary(Body) -> iolist_to_binary(Body).
 
-make_size_encoder_stream(Encoder, Charsetter, Fun) ->
-    fun(Start, End) ->
-        make_encoder_stream(Encoder, Charsetter, Fun(Start, End))
-    end.
+choose_transfer_encoding(AccEncHdr, Rs, Rd) ->
+    choose_transfer_encoding(wrq:version(Rd), AccEncHdr, Rs, Rd).
 
-make_encoder_stream(Encoder, Charsetter, {Body, done}) ->
-    {Encoder(Charsetter(Body)), done};
-make_encoder_stream(Encoder, Charsetter, {Body, Next}) ->
-    {Encoder(Charsetter(Body)), fun() -> make_encoder_stream(Encoder, Charsetter, Next()) end}.
+choose_transfer_encoding({1,0}, _AccEncHdr, Rs, Rd) ->
+    {Rs, Rd};
+choose_transfer_encoding({1,1}, AccEncHdr, Rs, Rd) ->
+    {EncodingsProvided, Rs1, Rd1} = controller_call(transfer_encodings_provided, Rs, Rd),
+    EncList = [ Enc || {Enc, _Func} <- EncodingsProvided ],
+    case webmachine_util:choose_encoding(EncList, AccEncHdr) of
+        none ->
+            {Rs1, Rd1};
+        "identity" ->
+            {Rs1, Rd1};
+        ChosenEnc ->
+            Enc = lists:keyfind(1, ChosenEnc, EncodingsProvided),
+            RdEnc = wrq:set_resp_transfer_encoding(Enc,Rd1),
+            {Rs1, RdEnc}
+    end;
+choose_transfer_encoding(_, _AccEncHdr, Rs, Rd) ->
+    {Rs, Rd}.
 
-choose_encoding(AccEncHdr, Rs, Rd) ->
-    {EncodingsProvided, Rs1, Rd1} = controller_call(encodings_provided, Rs, Rd),
-    Encs = [Enc || {Enc,_Fun} <- EncodingsProvided],
-    case webmachine_util:choose_encoding(Encs, AccEncHdr) of
-	none -> 
-	    {none, Rs1, Rd1};
-	ChosenEnc ->
-        RdEnc = case ChosenEnc of
-            "identity" -> Rd1;
-            _ -> wrq:set_resp_header("Content-Encoding",ChosenEnc, Rd1)
-        end,
-        {ok, RdEnc1} = webmachine_request:set_metadata('content-encoding',ChosenEnc,RdEnc),
-	    {ChosenEnc, Rs1, RdEnc1}
-    end.
 
 choose_charset(AccCharHdr, Rs, Rd) ->
     {CharsetsProvided, Rs1, Rd1} = controller_call(charsets_provided, Rs, Rd),
@@ -692,31 +663,35 @@ choose_charset(AccCharHdr, Rs, Rd) ->
         no_charset ->
             {no_charset, Rs1, Rd1};
         CL ->
-            CSets = [CSet || {CSet,_Fun} <- CL],
+            CSets = [maybe_old_tuple_value(CSet) || CSet <- CL],
             case webmachine_util:choose_charset(CSets, AccCharHdr) of
                 none -> 
                     {none, Rs1, Rd1};
                 Charset ->
-                    {ok, RdCSet} = webmachine_request:set_metadata('chosen-charset', Charset, Rd1),
+                    RdCSet = wrq:set_resp_chosen_charset(Charset, Rd1),
                     {Charset, Rs1, RdCSet}
             end
     end.
 
+maybe_old_tuple_value({A, _}) -> A;
+maybe_old_tuple_value(A) -> A.
+
+
 choose_upgrade(UpgradeHdr, Rs, Rd) ->
     {UpgradesProvided, Rs1, Rd1} = controller_call(upgrades_provided, Rs, Rd),
-	Provided1 = [ {string:to_lower(Prot), Prot, PFun} || {Prot, PFun} <- UpgradesProvided],
-	Requested = [ string:to_lower(string:strip(Up)) || Up <- string:tokens(UpgradeHdr, ",") ],
-	{choose_upgrade1(Requested, Provided1), Rs1, Rd1}.
+    Provided1 = [ {string:to_lower(Prot), Prot, PFun} || {Prot, PFun} <- UpgradesProvided],
+    Requested = [ string:to_lower(string:strip(Up)) || Up <- string:tokens(UpgradeHdr, ",") ],
+    {choose_upgrade1(Requested, Provided1), Rs1, Rd1}.
 
-	choose_upgrade1([], _) ->
-		none;
-	choose_upgrade1([Req|Requested], Provided) ->
-		case lists:keysearch(Req, 1, Provided) of
-			false ->
-				choose_upgrade1(Requested, Provided);
-			{value, {_, Protocol, UpgradeFun}} ->
-				{Protocol, UpgradeFun}
-		end.
+choose_upgrade1([], _) ->
+    none;
+choose_upgrade1([Req|Requested], Provided) ->
+    case lists:keysearch(Req, 1, Provided) of
+        false ->
+            choose_upgrade1(Requested, Provided);
+        {value, {_, Protocol, UpgradeFun}} ->
+            {Protocol, UpgradeFun}
+    end.
 
 
 variances(Rs, Rd) ->
@@ -726,11 +701,11 @@ variances(Rs, Rd) ->
         0 -> [];
         _ -> ["Accept"]
     end,
-    {EncodingsProvided, Rs2, Rd2} = controller_call(encodings_provided, Rs1, Rd1),
+    {EncodingsProvided, Rs2, Rd2} = controller_call(content_encodings_provided, Rs1, Rd1),
     AcceptEncoding = case length(EncodingsProvided) of
-	1 -> [];
-	0 -> [];
-	_ -> ["Accept-Encoding"]
+        1 -> [];
+        0 -> [];
+        _ -> ["Accept-Encoding"]
     end,
     {CharsetsProvided, Rs3, Rd3} = controller_call(charsets_provided, Rs2, Rd2),
     AcceptCharset = case CharsetsProvided of
