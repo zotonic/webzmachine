@@ -72,7 +72,8 @@
      get_qs_value/2,
      get_qs_value/3,
      range/1,
-     log_data/1
+     log_data/1,
+     use_sendfile/0
      ]).
 
 -include("webmachine_logger.hrl").
@@ -252,6 +253,7 @@ counter_process_loop(N) ->
             From ! {total, N}
     end.
 
+
 send_device_body(Socket, Length, IO) ->
     send_file_body_loop(Socket, 0, Length, IO).
 
@@ -261,13 +263,16 @@ send_file_body(Socket, Length, Filename) ->
 send_file_body(ssl, Socket, Length, Filename) ->
     send_file_body_read(Socket, Length, Filename);
 send_file_body(plain, Socket, Length, Filename) ->
-    case erlang:function_exported(file, sendfile, 5) of
-        true ->
+    case use_sendfile() of
+        erlang ->
             {ok, FD} = file:open(Filename, [raw,binary]),
             {ok, Bytes} = file:sendfile(FD, Socket, 0, Length, []),
             file:close(FD),
             Bytes;
-        false ->
+        yaws ->
+            {ok, Bytes} = sendfile:send(Socket, Filename, 0, Length),
+            Bytes;
+        disable ->
             send_file_body_read(Socket, Length, Filename)
     end.
 
@@ -313,10 +318,12 @@ send_file_body_parts(Socket, Parts, Filename) ->
 send_file_body_parts(ssl, Socket, Parts, Filename) ->
     send_file_body_parts_read(Socket, Parts, Filename);
 send_file_body_parts(plain, Socket, Parts, Filename) ->
-    case erlang:function_exported(file, sendfile, 5) of
-        true ->
+    case use_sendfile() of
+        erlang ->
             send_file_body_parts_sendfile(Socket, Parts, Filename);
-        false ->
+        yaws ->
+            send_file_body_parts_sendfile_yaws(Socket, Parts, Filename);
+        disable ->
             send_file_body_parts_read(Socket, Parts, Filename)
     end.
 
@@ -338,6 +345,23 @@ send_file_body_parts_sendfile(Socket, {Parts, Size, Boundary, ContentType}, File
     ],
     send(Socket, end_boundary(Boundary)),
     file:close(FD),
+    lists:sum(Bytes).
+
+
+send_file_body_parts_sendfile_yaws(Socket, {[{From,Length}], _Size, _Boundary, _ContentType}, Filename) ->
+    {ok, Bytes} = sendfile:send(Socket, Filename, From, Length),
+    Bytes;
+send_file_body_parts_sendfile_yaws(Socket, {Parts, Size, Boundary, ContentType}, Filename) ->
+    Bytes = [
+        begin
+            send(Socket, part_preamble(Boundary, ContentType, From, Length, Size)),
+            {ok, B} = sendfile:send(Socket, Filename, From, Length),
+            send(Socket, <<"\r\n">>),
+            B
+        end
+        || {From,Length} <- Parts
+    ],
+    send(Socket, end_boundary(Boundary)),
     lists:sum(Bytes).
 
 send_file_body_parts_read(Socket, Parts, Filename) ->
@@ -794,3 +818,15 @@ load_dispatch_data(Bindings, HostTokens, Port, PathTokens, AppRoot, DispPath, Re
 
 log_data(#wm_reqdata{log_data=LogData, metadata=MetaData}) ->
     LogData#wm_log_data{metadata=MetaData}.
+
+use_sendfile() ->
+    case application:get_env(webzmachine, use_sendfile) of
+        undefined -> disable;
+        {ok, disable} -> disable;
+        {ok, erlang} -> erlang;
+        {ok, yaws} -> 
+            case sendfile:enabled() of
+                true -> yaws;
+                false -> disable
+            end
+    end.
