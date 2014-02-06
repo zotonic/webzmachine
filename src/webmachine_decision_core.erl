@@ -649,7 +649,7 @@ choose_transfer_encoding({1,1}, AccEncHdr, Rs, Rd) ->
         "identity" ->
             {Rs1, Rd1};
         ChosenEnc ->
-            Enc = lists:keyfind(1, ChosenEnc, EncodingsProvided),
+            Enc = lists:keyfind(ChosenEnc, 1, EncodingsProvided),
             RdEnc = wrq:set_resp_transfer_encoding(Enc,Rd1),
             {Rs1, RdEnc}
     end;
