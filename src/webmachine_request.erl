@@ -103,7 +103,9 @@ peer_from_peername({ok, {Addr={192, 168, _, _}, _Port}}, ReqData) ->
 peer_from_peername({ok, {{127, 0, 0, 1}, _Port}}, ReqData) ->
     x_peername("127.0.0.1", ReqData);
 peer_from_peername({ok, {Addr, _Port}}, _ReqData) ->
-    inet_parse:ntoa(Addr).
+    inet_parse:ntoa(Addr);
+peer_from_peername({error, enotconn}, ReqData) ->
+    x_peername("-", ReqData).
 
 x_peername(Default, ReqData) ->
     case get_header_value("x-forwarded-for", ReqData) of
