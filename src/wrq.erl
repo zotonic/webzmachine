@@ -176,7 +176,7 @@ resp_content_encoding(#wm_reqdata{resp_content_encoding=ContentEncoding}) -> Con
 resp_content_type(#wm_reqdata{resp_content_type=ContentType}) -> ContentType.
 resp_chosen_charset(#wm_reqdata{resp_chosen_charset=Charset}) -> Charset.
 
-set_resp_transfer_encoding(TE, RD) when is_list(TE) -> RD#wm_reqdata{resp_transfer_encoding=TE}.
+set_resp_transfer_encoding(TE, RD) -> RD#wm_reqdata{resp_transfer_encoding=TE}.
 set_resp_content_encoding(CE, RD) -> RD#wm_reqdata{resp_content_encoding=CE}.
 set_resp_content_type(CT, RD) -> RD#wm_reqdata{resp_content_type=CT}.
 set_resp_chosen_charset(CS, RD) -> RD#wm_reqdata{resp_chosen_charset=CS}.
