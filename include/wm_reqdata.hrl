@@ -30,7 +30,7 @@
     resp_content_type :: string(),
     resp_chosen_charset :: string(),
     resp_body  :: any(),
-    resp_range :: atom(),
+    is_range_ok = true :: boolean(),
     host_tokens  :: [string()],
     port  :: inet:port_number(),
 

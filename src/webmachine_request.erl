@@ -537,6 +537,8 @@ read_chunk_length(Socket) ->
             exit(normal)
     end.
 
+get_range(#wm_reqdata{is_range_ok=false} = ReqData) ->
+    {undefined, ReqData#wm_reqdata{range=undefined}};
 get_range(ReqData) ->
     case get_header_value("range", ReqData) of
         undefined ->

@@ -559,8 +559,10 @@ decision(v3o18, Rs, Rd) ->
                 Exp -> wrq:set_resp_header("Expires", httpd_util:rfc1123_date(calendar:universal_time_to_local_time(Exp)), RdExp0)
             end,
 
-            CT = wrq:resp_content_type(RdExp),
-            {ContentTypesProvided, RsCT, RdCT} = controller_call(content_types_provided, RsExp, RdExp),
+            RdIfRange = check_if_range(Etag, LastModified, RdExp),
+
+            CT = wrq:resp_content_type(RdIfRange),
+            {ContentTypesProvided, RsCT, RdCT} = controller_call(content_types_provided, RsExp, RdIfRange),
             F = hd([Fun || {Type,Fun} <- ContentTypesProvided, CT =:= Type]),
             controller_call(F, RsCT, RdCT);
         false -> 
@@ -618,6 +620,27 @@ accept_helper(Rs, Rd) ->
             F = hd(AcceptedContentList),
             controller_call(F, Rs1, Rd1)
     end.
+
+check_if_range(Etag, LastModified, Rd) ->
+    case get_header_val("if-range", Rd) of
+        undefined ->
+            Rd;
+        IfRange ->
+            Rd#wm_reqdata{is_range_ok = is_check_if_range_1(IfRange, Etag, LastModified)}
+    end.
+
+is_check_if_range_1("W/\"" ++ _, _ETag, _LM) ->
+    false;
+is_check_if_range_1("w/\"" ++ _, _ETag, _LM) ->
+    false;
+is_check_if_range_1("\"" ++ _, undefined, _LM) ->
+    false;
+is_check_if_range_1("\"" ++ _ = IfETag, ETag, _LM) ->
+    ETags = webmachine_util:split_quoted_strings(IfETag),
+    lists:member(ETag, ETags);
+is_check_if_range_1(Date, _ETag, LM) ->
+    ErlDate = webmachine_util:convert_request_date(Date),
+    ErlDate =/= undefined andalso ErlDate >= LM.
 
    
 choose_content_encoding(AccEncHdr, Rs, Rd) ->
