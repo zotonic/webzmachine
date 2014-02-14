@@ -533,7 +533,7 @@ decision(v3o16, Rs, Rd) ->
     decision_test(method(Rd), 'PUT', v3o14, v3o18, Rs, Rd);
 %% Multiple representations?
 % (also where body generation for GET and HEAD is done)
-decision(v3o18, Rs, Rd) ->    
+decision(v3o18, Rs, Rd) ->
     BuildBody = case method(Rd) of
         'GET' -> true;
         'HEAD' -> true;
@@ -621,24 +621,22 @@ accept_helper(Rs, Rd) ->
             controller_call(F, Rs1, Rd1)
     end.
 
+% Only called for 'GET' and 'HEAD' - check if 206 result is allowed
 check_if_range(Etag, LastModified, Rd) ->
-    case get_header_val("if-range", Rd) of
-        undefined ->
-            Rd;
-        IfRange ->
-            Rd#wm_reqdata{is_range_ok = is_check_if_range_1(IfRange, Etag, LastModified)}
-    end.
+    Rd#wm_reqdata{is_range_ok = is_if_range_ok(get_header_val("if-range", Rd), Etag, LastModified)}.
 
-is_check_if_range_1("W/\"" ++ _, _ETag, _LM) ->
+is_if_range_ok(undefined, _ETag, _LM) ->
+    true;
+is_if_range_ok("W/\"" ++ _, _ETag, _LM) ->
     false;
-is_check_if_range_1("w/\"" ++ _, _ETag, _LM) ->
+is_if_range_ok("w/\"" ++ _, _ETag, _LM) ->
     false;
-is_check_if_range_1("\"" ++ _, undefined, _LM) ->
+is_if_range_ok("\"" ++ _, undefined, _LM) ->
     false;
-is_check_if_range_1("\"" ++ _ = IfETag, ETag, _LM) ->
+is_if_range_ok("\"" ++ _ = IfETag, ETag, _LM) ->
     ETags = webmachine_util:split_quoted_strings(IfETag),
     lists:member(ETag, ETags);
-is_check_if_range_1(Date, _ETag, LM) ->
+is_if_range_ok(Date, _ETag, LM) ->
     ErlDate = webmachine_util:convert_request_date(Date),
     ErlDate =/= undefined andalso ErlDate >= LM.
 
