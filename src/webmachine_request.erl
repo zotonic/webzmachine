@@ -173,7 +173,7 @@ send_response_bodyfun({file, Filename}, Code, Parts, ReqData, LogData) ->
     Length = filelib:file_size(Filename),
     send_response_bodyfun({file, Length, Filename}, Code, Parts, ReqData, LogData);
 send_response_bodyfun({file, Length, Filename}, Code, all, ReqData, LogData) ->
-    Writer = fun() -> send_file_body(ReqData#wm_reqdata.socket, Length, Filename) end,
+    Writer = fun() -> send_file_body(ReqData#wm_reqdata.socket, false, Length, Filename) end,
     send_response_headers(Code, Length, undefined, Writer, ReqData, LogData);
 send_response_bodyfun({file, _Length, Filename}, Code, Parts, ReqData, LogData) ->
     Writer = fun() -> send_file_body_parts(ReqData#wm_reqdata.socket, Parts, Filename) end,
@@ -220,6 +220,12 @@ send_stream_body(Socket, IsChunked, {Data, done}, SoFar) ->
     Size = send_chunk(Socket, IsChunked, Data),
     send_chunk(Socket, IsChunked, <<>>),
     Size + SoFar;
+send_stream_body(Socket, IsChunked, {{file, Filename}, Next}, SoFar) ->
+    Length = filelib:file_size(Filename),
+    send_stream_body(Socket, IsChunked, {{file, Length, Filename}, Next}, SoFar);
+send_stream_body(Socket, IsChunked, {{file, Size, Filename}, Next}, SoFar) ->
+    Bytes = send_file_body(Socket, IsChunked, Size, Filename),
+    send_stream_body(Socket, IsChunked, {<<>>, Next}, Bytes + SoFar);
 send_stream_body(Socket, IsChunked, {<<>>, Next}, SoFar) ->
     send_stream_body(Socket, IsChunked, Next(), SoFar);
 send_stream_body(Socket, IsChunked, {[], Next}, SoFar) ->
@@ -259,12 +265,16 @@ counter_process_loop(N) ->
 send_device_body(Socket, Length, IO) ->
     send_file_body_loop(Socket, 0, Length, IO).
 
-send_file_body(Socket, Length, Filename) ->
-    send_file_body(mochiweb_socket:type(Socket), Socket, Length, Filename).
+send_file_body(Socket, IsChunked, Length, Filename) ->
+    send_chunk_start(Socket, IsChunked, Length),
+    Bytes = send_file_body_1(mochiweb_socket:type(Socket), Socket, Length, Filename),
+    send_chunk_end(Socket, IsChunked),
+    Bytes.
 
-send_file_body(ssl, Socket, Length, Filename) ->
+
+send_file_body_1(ssl, Socket, Length, Filename) ->
     send_file_body_read(Socket, Length, Filename);
-send_file_body(plain, Socket, Length, Filename) ->
+send_file_body_1(plain, Socket, Length, Filename) ->
     case use_sendfile() of
         erlang ->
             {ok, FD} = file:open(Filename, [raw,binary]),
@@ -393,14 +403,12 @@ send_part_boundary(Socket, From, To, Size, Bin, Boundary, ContentType) ->
     size(Bin).
 
 
-
 send_chunk(Socket, true, Data) ->
     Data1 = iolist_to_binary(Data),
     Size = size(Data1),
-    _ = send(Socket, mochihex:to_hex(Size)),
-    _ = send(Socket, <<"\r\n">>),
+    send_chunk_start(Socket, true, Size),
     _ = send(Socket, Data1),
-    _ = send(Socket, <<"\r\n">>),
+    send_chunk_end(Socket, true),
     Size;
 send_chunk(_Socket, false, <<>>) ->
     0;
@@ -409,6 +417,18 @@ send_chunk(Socket, false, Data) ->
     Size = size(Data1),
     _ = send(Socket, Data1),
     Size.
+
+send_chunk_start(Socket, true, Size) when is_integer(Size) ->
+    _ = send(Socket, mochihex:to_hex(Size)),
+    _ = send(Socket, <<"\r\n">>);
+send_chunk_start(_Socket, false, _Size) ->
+    nop.
+
+send_chunk_end(Socket, true) ->
+    _ = send(Socket, <<"\r\n">>);
+send_chunk_end(_Socket, false) ->
+    nop.
+
 
 send(undefined, _Data) ->
     ok;
@@ -442,7 +462,7 @@ get_resp_body_size(_) ->
 
 
 %% @doc Infer incoming body length from transfer-encoding and content-length headers.
-%% @todo Should support gzip/compressed tranfer-encoding
+%% @todo Should support gzip/compressed transfer-encoding
 body_length(ReqData) ->
     case get_header_value("transfer-encoding", ReqData) of
         undefined ->
