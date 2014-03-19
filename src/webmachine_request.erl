@@ -383,21 +383,20 @@ send_file_body_parts_read(Socket, Parts, Filename) ->
     Bytes.
 
 
-send_parts(Socket, Bin, {[{From,To}], _Size, _Boundary, _ContentType}) ->
-    Length = To-From+1,
+send_parts(Socket, Bin, {[{From,Length}], _Size, _Boundary, _ContentType}) ->
     send(Socket, binary:part(Bin,From,Length)),
     Length;
 send_parts(Socket, Bin, {Parts, Size, Boundary, ContentType}) ->
     Bytes = [
-        send_part_boundary(Socket, From, To, Size, binary:part(Bin,From,To-From+1), Boundary, ContentType)
-        || {From,To} <- Parts
+        send_part_boundary(Socket, From, Length, Size, binary:part(Bin,From,Length), Boundary, ContentType)
+        || {From,Length} <- Parts
     ],
     send(Socket, end_boundary(Boundary)),
     lists:sum(Bytes).
 
-send_part_boundary(Socket, From, To, Size, Bin, Boundary, ContentType) ->
+send_part_boundary(Socket, From, Length, Size, Bin, Boundary, ContentType) ->
     send(Socket, [
-            part_preamble(Boundary, ContentType, From, To, Size),
+            part_preamble(Boundary, ContentType, From, Length, Size),
             Bin, <<"\r\n">>
         ]),
     size(Bin).
