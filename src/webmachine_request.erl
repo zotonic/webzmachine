@@ -278,17 +278,12 @@ send_file_body_1(plain, Socket, Length, Filename) ->
     case use_sendfile() of
         erlang ->
             {ok, FD} = file:open(Filename, [raw,binary]),
-            Bytes = case file:sendfile(FD, Socket, 0, Length, []) of
-                       {error, enotconn} -> 0;
-                       {ok, B} -> B
-                    end,
+            {ok, Bytes} = file:sendfile(FD, Socket, 0, Length, []),
             file:close(FD),
             Bytes;
         yaws ->
-            case sendfile:send(Socket, Filename, 0, Length) of
-                {error, enotconn} -> 0;
-                {ok, Bytes} -> Bytes
-            end;
+            {ok, Bytes} = sendfile:send(Socket, Filename, 0, Length),
+            Bytes;
         disable ->
             send_file_body_read(Socket, Length, Filename)
     end.

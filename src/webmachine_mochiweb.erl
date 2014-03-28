@@ -124,8 +124,11 @@ loop(MochiReq, LoopOpts) ->
                         erlang:put(mochiweb_request_force_close, true)
                 end
             catch
+                error:{badmatch, {error, enotconn}} ->
+                    error_logger:info_msg("~p:~p Dropped connection (enotconn) on ~p ~p", [?MODULE, ?LINE, Host, Path]),
+                    erlang:put(mochiweb_request_force_close, true);
                 error:Error -> 
-                    ?WM_DBG({error, Error, erlang:get_stacktrace()}),
+                    error_logger:warning_msg("~p:~p caught error ~p (stacktrace ~p)", [?MODULE, ?LINE, Error, erlang:get_stacktrace()]),
                     {ok,RD3} = webmachine_request:send_response(RD2#wm_reqdata{response_code=500}),
                     webmachine_controller:stop(Resource, RD3),
                     webmachine_decision_core:do_log(RD3)
