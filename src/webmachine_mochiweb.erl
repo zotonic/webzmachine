@@ -124,8 +124,8 @@ loop(MochiReq, LoopOpts) ->
                         erlang:put(mochiweb_request_force_close, true)
                 end
             catch
-                error:{badmatch, {error, enotconn}} ->
-                    error_logger:info_msg("~p:~p Dropped connection (enotconn) on ~p ~p", [?MODULE, ?LINE, Host, Path]),
+                error:{badmatch, {error, Error}} when Error =:= epipe; Error =:= enotconn ->
+                    error_logger:info_msg("~p:~p Dropped connection (~p) on ~p ~p", [?MODULE, ?LINE, Error, Host, Path]),
                     erlang:put(mochiweb_request_force_close, true);
                 error:Error -> 
                     error_logger:warning_msg("~p:~p caught error ~p (stacktrace ~p)", [?MODULE, ?LINE, Error, erlang:get_stacktrace()]),
