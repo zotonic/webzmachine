@@ -142,6 +142,7 @@ send_response_range(200, ReqData) ->
                             %% could be 416, for now we'll just return 200 and the whole body
                             send_response_code(200, all, RangeRD1);
                         PartList ->
+                            % error_logger:info_msg("PARTS ~p (~p)", [PartList, wrq:path(ReqData)]), 
                             ContentType = get_outheader_value("content-type", RangeRD1), 
                             {RangeHeaders, Boundary} = get_range_headers(PartList, Size, ContentType),
                             RespHdrsRD = wrq:set_resp_headers(RangeHeaders, RangeRD1),
@@ -164,10 +165,16 @@ send_response_bodyfun({device, IO}, Code, Parts, ReqData, LogData) ->
     Length = iodevice_size(IO),
     send_response_bodyfun({device, Length, IO}, Code, Parts, ReqData, LogData);
 send_response_bodyfun({device, Length, IO}, Code, all, ReqData, LogData) ->
-    Writer = fun() -> send_device_body(ReqData#wm_reqdata.socket, Length, IO) end,
+    Writer = fun() -> 
+                send_device_body(ReqData#wm_reqdata.socket, Length, IO),
+                file:close(IO)
+             end,
     send_response_headers(Code, Length, undefined, Writer, ReqData, LogData);
 send_response_bodyfun({device, _Length, IO}, Code, Parts, ReqData, LogData) ->
-    Writer = fun() -> send_device_body_parts(ReqData#wm_reqdata.socket, Parts, IO) end,
+    Writer = fun() -> 
+                send_device_body_parts(ReqData#wm_reqdata.socket, Parts, IO),
+                file:close(IO)
+             end,
     send_response_headers(Code, undefined, undefined, Writer, ReqData, LogData);
 send_response_bodyfun({file, Filename}, Code, Parts, ReqData, LogData) ->
     Length = filelib:file_size(Filename),
