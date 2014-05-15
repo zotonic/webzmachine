@@ -38,9 +38,7 @@ start(Name, Options) ->
                 {dispatcher, Dispatcher}],
 
     mochiweb_http:start([{name, Name},
-                         {loop, fun(MochiReq) -> 
-                                        ?MODULE:loop(MochiReq, LoopOpts)
-                                end} | Options2]).
+            {loop, {?MODULE, loop, [LoopOpts]}} | Options2]).
 
 stop() ->
     {registered_name, PName} = process_info(self(), registered_name),
