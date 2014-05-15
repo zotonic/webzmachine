@@ -39,7 +39,7 @@ start(Name, Options) ->
 
     mochiweb_http:start([{name, Name},
                          {loop, fun(MochiReq) -> 
-                                        loop(MochiReq, LoopOpts)
+                                        ?MODULE:loop(MochiReq, LoopOpts)
                                 end} | Options2]).
 
 stop() ->
