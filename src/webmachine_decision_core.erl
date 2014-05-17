@@ -86,7 +86,7 @@ respond(Code, Rs, Rd) ->
             {Etag, RsEt, RdEt0} = controller_call(generate_etag, Rs, RdNoCT),
             RdEt = case Etag of
                 undefined -> RdEt0;
-                ETag -> wrq:set_resp_header("ETag", ETag, RdEt0)
+                ETag -> wrq:set_resp_header("ETag", webmachine_util:quoted_string(ETag), RdEt0)
             end,
             {Expires, RsExp, RdExp0} = controller_call(expires, RsEt, RdEt),
             RdExp = case Expires of
