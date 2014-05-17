@@ -544,7 +544,7 @@ decision(v3o18, Rs, Rd) ->
             {Etag, RsEtag, RdEtag0} = controller_call(generate_etag, Rs, Rd),
             RdEtag = case Etag of
                 undefined -> RdEtag0;
-                ETag -> wrq:set_resp_header("ETag", ETag, RdEtag0)
+                ETag -> wrq:set_resp_header("ETag", webmachine_util:quoted_string(ETag), RdEtag0)
             end,
 
             {LastModified, RsLM, RdLM0} = controller_call(last_modified, RsEtag, RdEtag),
