@@ -129,7 +129,7 @@ loop(MochiReq, LoopOpts) ->
                     error_logger:warning_msg("~p:~p caught error ~p (stacktrace ~p)", [?MODULE, ?LINE, Error, erlang:get_stacktrace()]),
                     {ok,RD3} = webmachine_request:send_response(RD2#wm_reqdata{response_code=500}),
                     webmachine_controller:stop(Resource, RD3),
-                    webmachine_decision_core:do_log(RD3)
+                    webmachine_decision_core:do_log(webmachine_request:log_data(RD3))
             end;
         handled ->
             nop
