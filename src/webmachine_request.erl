@@ -76,8 +76,8 @@
      use_sendfile/0
      ]).
 
--include("webmachine_logger.hrl").
--include("wm_reqdata.hrl").
+-include_lib("wm_reqdata.hrl").
+-include_lib("webmachine_logger.hrl").
 
 -define(IDLE_TIMEOUT, infinity).
 -define(FILE_CHUNK_LENGTH, 65536).

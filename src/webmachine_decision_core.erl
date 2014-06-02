@@ -23,8 +23,8 @@
 -author('Bryan Fink <bryan@basho.com>').
 -export([handle_request/2]).
 -export([do_log/1]).
--include("webmachine_logger.hrl").
 -include("wm_reqdata.hrl").
+-include("webmachine_logger.hrl").
 
 handle_request(Resource, ReqData) ->
     try

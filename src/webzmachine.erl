@@ -20,7 +20,6 @@
 -export([start/0, stop/0]).
 -export_type([reqdata/0, context/0, reply/0]).
 
--include("webmachine_logger.hrl").
 -include_lib("include/wm_reqdata.hrl").
 
 -opaque reqdata() :: #wm_reqdata{}.

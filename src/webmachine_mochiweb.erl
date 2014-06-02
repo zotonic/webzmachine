@@ -20,8 +20,8 @@
 -author('Andy Gross <andy@basho.com>').
 -export([start/1, start/2, stop/0, stop/1, loop/2]).
 
--include("webmachine_logger.hrl").
 -include_lib("wm_reqdata.hrl").
+-include_lib("webmachine_logger.hrl").
 
 start(Options) ->
     {PName, Options1} = case get_option(name, Options) of

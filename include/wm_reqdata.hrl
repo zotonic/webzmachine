@@ -1,7 +1,14 @@
+
+-ifdef(namespaced_dicts).
+-type wm_dict() :: dict:dict().
+-else.
+-type wm_dict() :: dict().
+-endif.
+
 -record(wm_reqdata, {
     % Reqstate
     socket=undefined,
-    metadata=dict:new(),
+    metadata=dict:new() :: wm_dict(),
     range=undefined,
     peer=undefined :: inet:ip_address(),
     bodyfetch=undefined,
@@ -14,7 +21,7 @@
     disp_path,
     path     :: string(),
     raw_path :: string(),
-    path_info :: dict(),
+    path_info :: wm_dict(),
     path_tokens :: [string()],
     app_root  :: string(),
     response_code :: pos_integer(),

@@ -26,6 +26,7 @@
 %% supervisor callbacks
 -export([init/1]).
 
+-include_lib("wm_reqdata.hrl").
 -include_lib("webmachine_logger.hrl").
 
 %% @spec start_link() -> ServerRet

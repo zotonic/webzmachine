@@ -22,7 +22,10 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 -export([log/1, refresh/0]).
+
+-include_lib("wm_reqdata.hrl").
 -include("webmachine_logger.hrl").
+
 -record(state, {hourstamp, filename, handle}).
 
 alog_path(BaseDir) ->

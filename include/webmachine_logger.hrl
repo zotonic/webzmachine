@@ -13,5 +13,5 @@
 	 response_length,
 	 end_time :: tuple(),
 	 finish_time :: tuple(),
-	 metadata :: dict()}).
+	 metadata :: wm_dict()}).
 
