@@ -30,7 +30,7 @@
     max_recv_body :: pos_integer(),
     req_cookie    :: string(),
     req_qs        :: string(),
-    req_headers   :: gb_tree(), %% mochiheaders
+    req_headers   :: wm_gb_tree(), %% mochiheaders
     req_body,
     resp_redirect :: boolean(),
     resp_headers,
