@@ -1,8 +1,10 @@
 
 -ifdef(namespaced_dicts).
 -type wm_dict() :: dict:dict().
+-type wm_gb_tree() :: gb_trees:tree().
 -else.
 -type wm_dict() :: dict().
+-type wm_gb_tree() :: gb_tree().
 -endif.
 
 -record(wm_reqdata, {
