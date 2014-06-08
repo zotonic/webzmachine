@@ -21,26 +21,22 @@
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
--export([log_access/1, refresh/0, get_metadata/2]).
+-export([log_access/1, log_message/1, refresh/0, get_metadata/2]).
 
 -include_lib("wm_reqdata.hrl").
 -include_lib("webmachine_logger.hrl").
 
 -record(state, {hourstamp, filename, handle}).
 
+%%
+%% Api
+%%
+
 alog_path(BaseDir) ->
     filename:join(BaseDir, "access.log").
 
 start_link(BaseDir) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [BaseDir], []).
-
-init([BaseDir]) ->
-    defer_refresh(),
-    FileName = alog_path(BaseDir),
-    DateHour = datehour(),
-    filelib:ensure_dir(FileName),
-    Handle = log_open(FileName, DateHour),
-    {ok, #state{filename=FileName, handle=Handle, hourstamp=DateHour}}.
 
 refresh() ->
     refresh(os:timestamp()).
@@ -51,13 +47,31 @@ refresh(Time) ->
 log_access(#wm_log_data{}=D) ->
     gen_server:cast(?MODULE, {log_access, D}).
 
-handle_call(_Msg,_From,State) -> {noreply,State}.
+log_message(Msg) ->
+    gen_server:cast(?MODULE, {log_message, Msg}).
+
+%%
+%% gen_server callbacks
+%%
+
+init([BaseDir]) ->
+    defer_refresh(),
+    FileName = alog_path(BaseDir),
+    DateHour = datehour(),
+    filelib:ensure_dir(FileName),
+    Handle = log_open(FileName, DateHour),
+    {ok, #state{filename=FileName, handle=Handle, hourstamp=DateHour}}.
+
+handle_call(_Msg,_From,State) -> 
+    {noreply,State}.
 
 handle_cast({log_access, LogData}, State) ->
-    NewState = maybe_rotate(State, os:timestamp()),
     Msg = format_req(LogData),
-    log_write(NewState#state.handle, Msg),
-    {noreply, NewState};
+    {noreply, do_log(Msg, State)};
+
+handle_cast({log_message, Msg}, State) ->
+    {noreply, do_log(Msg, State)};
+
 handle_cast({refresh, Time}, State) ->
     {noreply, maybe_rotate(State, Time)}.
 
@@ -72,6 +86,10 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+%%
+%% Helpers
+%%
 
 log_open(FileName, DateHour) ->
     LogName = FileName ++ suffix(DateHour),
@@ -88,6 +106,11 @@ log_write({?MODULE, _Name, FD}, IoData) ->
 log_close({?MODULE, Name, FD}) ->
     webmachine_util:to_console("~p: closing log file: ~p~n", [?MODULE, Name]),
     file:close(FD).
+
+do_log(Msg, State) ->
+    NewState = maybe_rotate(State, os:timestamp()),
+    log_write(NewState#state.handle, Msg),
+    NewState.
 
 maybe_rotate(State, Time) ->
     ThisHour = datehour(Time),
