@@ -283,23 +283,19 @@ send_file_body_1(ssl, Socket, Length, Filename) ->
     send_file_body_read(Socket, Length, Filename);
 send_file_body_1(plain, Socket, Length, Filename) ->
     case use_sendfile() of
-        erlang ->
-            {ok, FD} = file:open(Filename, [raw,binary]),
-            {ok, Bytes} = file:sendfile(FD, Socket, 0, Length, []),
-            file:close(FD),
-            Bytes;
-        yaws ->
-            {ok, Bytes} = sendfile:send(Socket, Filename, 0, Length),
-            Bytes;
         disable ->
-            send_file_body_read(Socket, Length, Filename)
+            send_file_body_read(Socket, Length, Filename);
+        Type ->
+            sendfile(Type, Socket, Filename, 0, Length)
     end.
 
 send_file_body_read(Socket, Length, Filename) ->
     {ok, FD} = file:open(Filename, [raw,binary]),
-    Bytes = send_file_body_loop(Socket, 0, Length, FD),
-    file:close(FD),
-    Bytes.
+    try
+        send_file_body_loop(Socket, 0, Length, FD)
+    after
+        file:close(FD)
+    end.
 
 send_file_body_loop(_Socket, Offset, Size, _Device) when Offset =:= Size ->
     Size;
@@ -338,45 +334,21 @@ send_file_body_parts(ssl, Socket, Parts, Filename) ->
     send_file_body_parts_read(Socket, Parts, Filename);
 send_file_body_parts(plain, Socket, Parts, Filename) ->
     case use_sendfile() of
-        erlang ->
-            send_file_body_parts_sendfile(Socket, Parts, Filename);
-        yaws ->
-            send_file_body_parts_sendfile_yaws(Socket, Parts, Filename);
         disable ->
-            send_file_body_parts_read(Socket, Parts, Filename)
+            send_file_body_parts_read(Socket, Parts, Filename);
+        Type ->
+            send_file_body_parts_sendfile(Type, Socket, Parts, Filename)
     end.
 
-send_file_body_parts_sendfile(Socket, {[{From,Length}], _Size, _Boundary, _ContentType}, Filename) ->
-    {ok, FD} = file:open(Filename, [raw,binary]),
-    {ok, Bytes} = file:sendfile(FD, Socket, From, Length, []),
-    file:close(FD),
-    Bytes;
-send_file_body_parts_sendfile(Socket, {Parts, Size, Boundary, ContentType}, Filename) ->
-    {ok, FD} = file:open(Filename, [raw,binary]),
+send_file_body_parts_sendfile(Type, Socket, {[{From,Length}], _Size, _Boundary, _ContentType}, Filename) ->
+    sendfile(Type, Socket, Filename, From, Length);
+send_file_body_parts_sendfile(Type, Socket, {Parts, Size, Boundary, ContentType}, Filename) ->
     Bytes = [
         begin
-            send(Socket, part_preamble(Boundary, ContentType, From, Length, Size)),
-            {ok, B} = file:sendfile(FD, Socket, From, Length, []),
-            send(Socket, <<"\r\n">>),
-            B
-        end
-        || {From,Length} <- Parts
-    ],
-    send(Socket, end_boundary(Boundary)),
-    file:close(FD),
-    lists:sum(Bytes).
-
-
-send_file_body_parts_sendfile_yaws(Socket, {[{From,Length}], _Size, _Boundary, _ContentType}, Filename) ->
-    {ok, Bytes} = sendfile:send(Socket, Filename, From, Length),
-    Bytes;
-send_file_body_parts_sendfile_yaws(Socket, {Parts, Size, Boundary, ContentType}, Filename) ->
-    Bytes = [
-        begin
-            send(Socket, part_preamble(Boundary, ContentType, From, Length, Size)),
-            {ok, B} = sendfile:send(Socket, Filename, From, Length),
-            send(Socket, <<"\r\n">>),
-            B
+                send(Socket, part_preamble(Boundary, ContentType, From, Length, Size)),
+                B = sendfile(Type, Filename, Socket, From, Length),
+                send(Socket, <<"\r\n">>),
+                B
         end
         || {From,Length} <- Parts
     ],
@@ -385,10 +357,11 @@ send_file_body_parts_sendfile_yaws(Socket, {Parts, Size, Boundary, ContentType},
 
 send_file_body_parts_read(Socket, Parts, Filename) ->
     {ok, FD} = file:open(Filename, [raw,binary]),
-    Bytes = send_device_body_parts(Socket, Parts, FD),
-    file:close(FD),
-    Bytes.
-
+    try
+        send_device_body_parts(Socket, Parts, FD)
+    after
+        file:close(FD)
+    end.
 
 send_parts(Socket, Bin, {[{From,Length}], _Size, _Boundary, _ContentType}) ->
     send(Socket, binary:part(Bin,From,Length)),
@@ -440,13 +413,37 @@ send(undefined, _Data) ->
     ok;
 send(Socket, Bin) when is_binary(Bin) ->
     case mochiweb_socket:send(Socket, Bin) of
-        ok -> ok;
-        {error,closed} -> ok;
+        ok -> ok; 
+        {error, closed} -> ok;
         _ -> exit(normal)
     end;
 send(Socket, IoList) when is_list(IoList) ->
     send(Socket, iolist_to_binary(IoList)).
 
+
+sendfile(erlang, Socket, Filename, Offset, Length) ->
+    sendfile_erlang(Socket, Filename, Offset, Length);
+sendfile(yaws, Socket, Filename, Offset, Length) ->
+    sendfile_yaws(Socket, Filename, Offset, Length).
+
+sendfile_erlang(Socket, Filename, Offset, Length) ->
+    {ok, FD} = file:open(Filename, [raw,binary]),
+    try
+        case file:sendfile(FD, Socket, Offset, Length, []) of
+            {ok, Bytes} ->  Bytes;
+            {error, closed} -> Length;
+            _ -> exit(normal)
+        end
+    after
+        file:close(FD)
+    end.
+
+sendfile_yaws(Socket, Filename, Offset, Length) ->
+    case sendfile:send(Socket, Filename, Offset, Length) of
+        {ok, Bytes} -> Bytes;
+        {error, closed} -> Length;
+        _ -> exit(normal)
+    end.
 
 get_resp_body_size({device, Size, _} = Body) ->
     {ok, Size, Body};
