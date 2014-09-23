@@ -123,6 +123,7 @@ is_ssl(_RD = #wm_reqdata{socket=Socket}) ->
 
 response_code(_RD = #wm_reqdata{response_code=C}) when is_integer(C) -> C.
 
+req_cookie(undefined) -> undefined;
 req_cookie(_RD = #wm_reqdata{req_cookie=C}) when is_list(C) -> C. % string
 
 %% @spec req_qs(reqdata()) -> [{Key, Value}]
