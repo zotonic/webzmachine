@@ -166,14 +166,16 @@ send_response_bodyfun({device, IO}, Code, Parts, ReqData, LogData) ->
     send_response_bodyfun({device, Length, IO}, Code, Parts, ReqData, LogData);
 send_response_bodyfun({device, Length, IO}, Code, all, ReqData, LogData) ->
     Writer = fun() -> 
-                send_device_body(ReqData#wm_reqdata.socket, Length, IO),
-                file:close(IO)
+                Bytes = send_device_body(ReqData#wm_reqdata.socket, Length, IO),
+                _ = file:close(IO),
+                Bytes
              end,
     send_response_headers(Code, Length, undefined, Writer, ReqData, LogData);
 send_response_bodyfun({device, _Length, IO}, Code, Parts, ReqData, LogData) ->
     Writer = fun() -> 
-                send_device_body_parts(ReqData#wm_reqdata.socket, Parts, IO),
-                file:close(IO)
+                Bytes = send_device_body_parts(ReqData#wm_reqdata.socket, Parts, IO),
+                _ = file:close(IO),
+                Bytes
              end,
     send_response_headers(Code, undefined, undefined, Writer, ReqData, LogData);
 send_response_bodyfun({file, Filename}, Code, Parts, ReqData, LogData) ->
