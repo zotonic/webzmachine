@@ -49,13 +49,19 @@ refresh(Time) ->
     gen_server:cast(?MODULE, {refresh, Time}).
 
 log(#wm_log_data{}=D) ->
-    gen_server:call(?MODULE, {log, D}, infinity).
+    case application:get_env(webzmachine, perf_log_dir) of
+        {ok, _} -> gen_server:cast(?MODULE, {log, D});
+       _ -> ok
+    end.
 
-handle_call({log, LogData}, _From, State) ->
+handle_call(_Msg, _From, State) ->
+    {reply, ok, State}.
+
+handle_cast({log, LogData}, State) ->
     NewState = maybe_rotate(State, os:timestamp()),
     Msg = format_req(LogData),
     log_write(NewState#state.handle, Msg),
-    {reply, ok, NewState}.
+    {reply, ok, NewState};
 
 handle_cast({refresh, Time}, State) ->
     {noreply, maybe_rotate(State, Time)}.
