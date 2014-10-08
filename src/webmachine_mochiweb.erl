@@ -100,6 +100,7 @@ loop(MochiReq, LoopOpts) ->
             LogData = webmachine_request:log_data(ReqState3),
             webmachine_decision_core:do_log(LogData);
         {Mod, ModOpts, HostTokens, Port, PathTokens, Bindings, AppRoot, StringPath} ->
+            % TODO: set lager:md() here
             {ok, Resource} = webmachine_controller:init(ReqData, Mod, ModOpts),
             {ok,RD1} = webmachine_request:load_dispatch_data(Bindings,HostTokens,Port,PathTokens,AppRoot,StringPath,ReqDispatch),
             {ok,RD2} = webmachine_request:set_metadata('controller_module', Mod, RD1),
@@ -122,6 +123,10 @@ loop(MochiReq, LoopOpts) ->
                         erlang:put(mochiweb_request_force_close, true)
                 end
             catch
+                throw:{stop_request, ResponseCode} when is_integer(ResponseCode) -> 
+                    {ok,RD3} = webmachine_request:send_response(RD2#wm_reqdata{response_code=ResponseCode}),
+                    webmachine_controller:stop(Resource, RD3),
+                    webmachine_decision_core:do_log(webmachine_request:log_data(RD3));
                 error:{badmatch, {error, Error}} when Error =:= epipe; Error =:= enotconn ->
                     error_logger:info_msg("~p:~p Dropped connection (~p) on ~p ~p", [?MODULE, ?LINE, Error, Host, Path]),
                     erlang:put(mochiweb_request_force_close, true);
@@ -131,6 +136,9 @@ loop(MochiReq, LoopOpts) ->
                     webmachine_controller:stop(Resource, RD3),
                     webmachine_decision_core:do_log(webmachine_request:log_data(RD3))
             end;
+        {stop_request, RespCode} ->
+            {ok,RD1} = webmachine_request:send_response(ReqDispatch#wm_reqdata{response_code=RespCode}),
+            webmachine_decision_core:do_log(webmachine_request:log_data(RD1));
         handled ->
             nop
     end.
