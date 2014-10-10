@@ -50,7 +50,7 @@ stop(Name) ->
 init_reqdata(MochiReq) ->
     Socket = MochiReq:get(socket),
     Scheme = MochiReq:get(scheme),
-    Method = MochiReq:get(method),
+    Method = maybe_make_atom(MochiReq:get(method)),
     RawPath = MochiReq:get(raw_path), 
     Version = MochiReq:get(version),
     Headers = MochiReq:get(headers),
@@ -87,18 +87,9 @@ loop(MochiReq, LoopOpts) ->
                               end,
     case Dispatch of
         {no_dispatch_match, undefined, undefined} ->
-            {ErrorHTML,ReqState1} = webmachine_error_handler:render_error(404, ReqDispatch, {none, none, []}),
-            ReqState2 = webmachine_request:append_to_response_body(ErrorHTML, ReqState1),
-            {ok,ReqState3} = webmachine_request:send_response(ReqState2#wm_reqdata{response_code=404}),
-            LogData = webmachine_request:log_data(ReqState3),
-            webmachine_decision_core:do_log(LogData);
+            no_dispatch_match(ReqDispatch);
         {no_dispatch_match, _UnmatchedHost, _UnmatchedPathTokens} ->
-            {ok, ErrorHandler} = application:get_env(webzmachine, error_handler),
-            {ErrorHTML,ReqState1} = ErrorHandler:render_error(404, ReqDispatch, {none, none, []}),
-            ReqState2 = webmachine_request:append_to_response_body(ErrorHTML, ReqState1),
-            {ok,ReqState3} = webmachine_request:send_response(ReqState2#wm_reqdata{response_code=404}),
-            LogData = webmachine_request:log_data(ReqState3),
-            webmachine_decision_core:do_log(LogData);
+            no_dispatch_match(ReqDispatch);
         {Mod, ModOpts, HostTokens, Port, PathTokens, Bindings, AppRoot, StringPath} ->
             % TODO: set lager:md() here
             {ok, Resource} = webmachine_controller:init(ReqData, Mod, ModOpts),
@@ -143,6 +134,26 @@ loop(MochiReq, LoopOpts) ->
             nop
     end.
 
+no_dispatch_match(ReqDispatch) ->
+    no_dispatch_match(wrq:method(ReqDispatch), ReqDispatch).
+
+no_dispatch_match(Method, ReqDispatch) when Method =:= 'GET'; Method =:= 'POST' ->
+    {ok, ErrorHandler} = application:get_env(webzmachine, error_handler),
+    {ErrorHTML,ReqState1} = ErrorHandler:render_error(404, ReqDispatch, {none, none, []}),
+    ReqState2 = webmachine_request:append_to_response_body(ErrorHTML, ReqState1),
+    {ok,ReqState3} = webmachine_request:send_response(ReqState2#wm_reqdata{response_code=404}),
+    LogData = webmachine_request:log_data(ReqState3),
+    webmachine_decision_core:do_log(LogData);
+no_dispatch_match('CONNECT', ReqDispatch) ->
+    {ok,ReqState1} = webmachine_request:send_response(ReqDispatch#wm_reqdata{response_code=400}),
+    LogData = webmachine_request:log_data(ReqState1),
+    webmachine_decision_core:do_log(LogData);
+no_dispatch_match(_Method, ReqDispatch) ->
+    {ok,ReqState1} = webmachine_request:send_response(ReqDispatch#wm_reqdata{response_code=404}),
+    LogData = webmachine_request:log_data(ReqState1),
+    webmachine_decision_core:do_log(LogData).
+
+
 get_option(Option, Options) ->
     get_option(Option, Options, undefined).
 
@@ -157,6 +168,8 @@ host_headers(ReqData) ->
      V /= undefined].
 
 
+maybe_make_atom("CONNECT") -> 'CONNECT';
+maybe_make_atom(Method) -> Method.
 
 %% @doc Sometimes a connection gets re-used for different sites. Make sure that no information
 %% leaks from on request to another.
