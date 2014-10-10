@@ -232,6 +232,8 @@ send_stream_body(Socket, IsChunked, {Data, done}, SoFar) ->
 send_stream_body(Socket, IsChunked, {{file, Filename}, Next}, SoFar) ->
     Length = filelib:file_size(Filename),
     send_stream_body(Socket, IsChunked, {{file, Length, Filename}, Next}, SoFar);
+send_stream_body(Socket, IsChunked, {{file, 0, _Filename}, Next}, SoFar) ->
+    send_stream_body(Socket, IsChunked, {<<>>, Next}, SoFar);
 send_stream_body(Socket, IsChunked, {{file, Size, Filename}, Next}, SoFar) ->
     Bytes = send_file_body(Socket, IsChunked, Size, Filename),
     send_stream_body(Socket, IsChunked, {<<>>, Next}, Bytes + SoFar);
