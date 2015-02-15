@@ -50,7 +50,6 @@
 -record(wm_controller, {
     mod,
     mod_state,
-    mod_exports, 
     trace
 }).
 

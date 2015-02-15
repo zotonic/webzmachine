@@ -160,7 +160,6 @@ init(ReqData, Mod, Args) ->
             {ok, #wm_controller{
                     mod=Mod,
                     mod_state=ModState,
-                    mod_exports=[ F || {F,_} <- Mod:module_info(exports) ],
                     trace=false}};
         {true, Eagerness} ->
             {ok, LoggerProc} = start_log_proc(Dir, Mod, Eagerness),
@@ -172,7 +171,6 @@ init(ReqData, Mod, Args) ->
             {ok, #wm_controller{
                     mod=Mod,
                     mod_state=ModState,
-                    mod_exports=[ F || {F,_} <- Mod:module_info(exports) ],
                     trace=LoggerProc}};
         _ ->
             {stop, bad_init_arg}
@@ -181,8 +179,8 @@ init(ReqData, Mod, Args) ->
 modstate(Controller) ->
     Controller#wm_controller.mod_state.
 
-do(Fun, #wm_controller{mod_exports=Exports} = Controller, ReqData) when is_atom(Fun) ->
-    case lists:member(Fun, Exports) of
+do(Fun, #wm_controller{mod=Mod} = Controller, ReqData) when is_atom(Fun) ->
+    case erlang:function_exported(Mod, Fun, 2) of
         true ->
             controller_call(Fun, Controller, ReqData);
         false ->
