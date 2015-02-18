@@ -60,7 +60,7 @@ cacheable(_) -> false.
 
 
 get_header_val(H, Rd) -> 
-    wrq:get_req_header_lc(H, Rd).
+    wrq:get_req_header(H, Rd).
 
 method(Rd) ->
     wrq:method(Rd).
@@ -72,7 +72,7 @@ d(DecisionID, Rs, Rd) ->
 respond(Code, Rs, Rd) ->
     {RsCode, RdCode} = case Code of
         200 ->
-            case get_header_val("te", Rd) of
+            case get_header_val("Te", Rd) of
                 undefined -> {Rs,Rd};
                 TEHdr -> choose_transfer_encoding(TEHdr, Rs, Rd)
             end;
@@ -200,11 +200,11 @@ decision(v3b7, Rs, Rd) ->
     decision_test(controller_call(forbidden, Rs, Rd), true, 403, v3b6_upgrade);
 %% "Upgrade?"
 decision(v3b6_upgrade, Rs, Rd) ->
-    case get_header_val("upgrade", Rd) of
+    case get_header_val('Upgrade', Rd) of
         undefined ->
             decision(v3b6, Rs, Rd);
         UpgradeHdr ->
-            case get_header_val("connection", Rd) of
+            case get_header_val('Connection', Rd) of
                 undefined ->
                     decision(v3b6, Rs, Rd);
                 Connection ->
@@ -245,7 +245,7 @@ decision(v3b3, Rs, Rd) ->
 decision(v3c3, Rs, Rd) ->
     {ContentTypes, Rs1, Rd1} = controller_call(content_types_provided, Rs, Rd),
     PTypes = [Type || {Type,_Fun} <- ContentTypes],
-    case get_header_val("accept", Rd1) of
+    case get_header_val('Accept', Rd1) of
     undefined ->
         RdCT = wrq:set_resp_content_type(hd(PTypes), Rd1),
         d(v3d4, Rs1, RdCT);
@@ -256,7 +256,7 @@ decision(v3c3, Rs, Rd) ->
 decision(v3c4, Rs, Rd) ->
     {ContentTypesProvided, Rs1, Rd1} = controller_call(content_types_provided, Rs, Rd),
     PTypes = [Type || {Type,_Fun} <- ContentTypesProvided],
-    AcceptHdr = get_header_val("accept", Rd1),
+    AcceptHdr = get_header_val('Accept', Rd1),
     case webmachine_util:choose_media_type(PTypes, AcceptHdr) of
     none ->
         respond(406, Rs1, Rd1);
@@ -266,19 +266,19 @@ decision(v3c4, Rs, Rd) ->
     end;
 %% Accept-Language exists?
 decision(v3d4, Rs, Rd) ->
-    decision_test(get_header_val("accept-language", Rd), undefined, v3e5, v3d5, Rs, Rd);
+    decision_test(get_header_val('Accept-Language', Rd), undefined, v3e5, v3d5, Rs, Rd);
 %% Acceptable Language available? %% WMACH-46 (do this as proper conneg)
 decision(v3d5, Rs, Rd) ->
     decision_test(controller_call(language_available, Rs, Rd), true, v3e5, 406);
 %% Accept-Charset exists?
 decision(v3e5, Rs, Rd) ->
-    case get_header_val("accept-charset", Rd) of
+    case get_header_val('Accept-Charset', Rd) of
         undefined -> decision_test(choose_charset("*", Rs, Rd), none, 406, v3f6);
         _ -> d(v3e6, Rs, Rd)
     end;
 %% Acceptable Charset available?
 decision(v3e6, Rs, Rd) ->
-    decision_test(choose_charset(get_header_val("accept-charset", Rd), Rs, Rd), none, 406, v3f6);
+    decision_test(choose_charset(get_header_val('Accept-Charset', Rd), Rs, Rd), none, 406, v3f6);
 %% Accept-Encoding exists?
 % (also, set content-type header here, now that charset is chosen)
 decision(v3f6, Rs, Rd) ->
@@ -288,13 +288,13 @@ decision(v3f6, Rs, Rd) ->
                CS -> "; charset=" ++ CS
            end,
     Rd1 = wrq:set_resp_header("Content-Type", CType ++ CSet, Rd),
-    case get_header_val("accept-encoding", Rd1) of
+    case get_header_val('Accept-Encoding', Rd1) of
         undefined -> decision_test(choose_content_encoding("identity;q=1.0,*;q=0.5", Rs, Rd1), none, 406, v3g7);
         _ -> d(v3f7, Rs, Rd1)
     end;
 %% Acceptable encoding available?
 decision(v3f7, Rs, Rd) ->
-    decision_test(choose_content_encoding(get_header_val("accept-encoding", Rd), Rs, Rd), none, 406, v3g7);
+    decision_test(choose_content_encoding(get_header_val('Accept-Encoding', Rd), Rs, Rd), none, 406, v3g7);
 %% "Resource exists?"
 decision(v3g7, Rs, Rd) ->
     % this is the first place after all conneg, so set Vary here
@@ -306,29 +306,29 @@ decision(v3g7, Rs, Rd) ->
     decision_test(controller_call(resource_exists, Rs1, RdVar), true, v3g8, v3h7);
 %% "If-Match exists?"
 decision(v3g8, Rs, Rd) ->
-    decision_test(get_header_val("if-match", Rd), undefined, v3h10, v3g9, Rs, Rd);
+    decision_test(get_header_val('If-Match', Rd), undefined, v3h10, v3g9, Rs, Rd);
 %% "If-Match: * exists"
 decision(v3g9, Rs, Rd) ->
-    decision_test(get_header_val("if-match", Rd), "*", v3h10, v3g11, Rs, Rd);
+    decision_test(get_header_val('If-Match', Rd), "*", v3h10, v3g11, Rs, Rd);
 %% "ETag in If-Match"
 decision(v3g11, Rs, Rd) ->
-    ETags = webmachine_util:split_quoted_strings(get_header_val("if-match", Rd)),
+    ETags = webmachine_util:split_quoted_strings(get_header_val('If-Match', Rd)),
     decision_test_fn(controller_call(generate_etag, Rs, Rd),
                      fun(ETag) -> lists:member(ETag, ETags) end,
                      v3h10, 412);
 %% "If-Match: * exists"
 decision(v3h7, Rs, Rd) ->
-    decision_test(get_header_val("if-match", Rd), "*", 412, v3i7, Rs, Rd);
+    decision_test(get_header_val('If-Match', Rd), "*", 412, v3i7, Rs, Rd);
 %% "If-unmodified-since exists?"
 decision(v3h10, Rs, Rd) ->
-    decision_test(get_header_val("if-unmodified-since", Rd), undefined, v3i12, v3h11, Rs, Rd);
+    decision_test(get_header_val('If-Unmodified-Since', Rd), undefined, v3i12, v3h11, Rs, Rd);
 %% "I-UM-S is valid date?"
 decision(v3h11, Rs, Rd) ->
-    IUMSDate = get_header_val("if-unmodified-since", Rd),
+    IUMSDate = get_header_val('If-Unmodified-Since', Rd),
     decision_test(webmachine_util:convert_request_date(IUMSDate), bad_date, v3i12, v3h12, Rs, Rd);
 %% "Last-Modified > I-UM-S?"
 decision(v3h12, Rs, Rd) ->
-    ReqDate = get_header_val("if-unmodified-since", Rd),
+    ReqDate = get_header_val('If-Unmodified-Since', Rd),
     ReqErlDate = webmachine_util:convert_request_date(ReqDate),
     {ResErlDate, Rs1, Rd1} = controller_call(last_modified, Rs, Rd),
     decision_test(ResErlDate > ReqErlDate, true, 412, v3i12, Rs1, Rd1);
@@ -351,10 +351,10 @@ decision(v3i7, Rs, Rd) ->
     decision_test(method(Rd), 'PUT', v3i4, v3k7, Rs, Rd);
 %% "If-none-match exists?"
 decision(v3i12, Rs, Rd) ->
-    decision_test(get_header_val("if-none-match", Rd), undefined, v3l13, v3i13, Rs, Rd);
+    decision_test(get_header_val('If-None-Match', Rd), undefined, v3l13, v3i13, Rs, Rd);
 %% "If-None-Match: * exists?"
 decision(v3i13, Rs, Rd) ->
-    decision_test(get_header_val("if-none-match", Rd), "*", v3j18, v3k13, Rs, Rd);
+    decision_test(get_header_val('If-None-Match', Rd), "*", v3j18, v3k13, Rs, Rd);
 %% GET or HEAD?
 decision(v3j18, Rs, Rd) ->
     decision_test(lists:member(method(Rd),['GET','HEAD']), true, 304, 412, Rs, Rd);
@@ -377,7 +377,7 @@ decision(v3k7, Rs, Rd) ->
     decision_test(controller_call(previously_existed, Rs, Rd), true, v3k5, v3l7);
 %% "Etag in if-none-match?"
 decision(v3k13, Rs, Rd) ->
-    ETags = webmachine_util:split_quoted_strings(get_header_val("if-none-match", Rd)),
+    ETags = webmachine_util:split_quoted_strings(get_header_val('If-None-Match', Rd)),
     decision_test_fn(controller_call(generate_etag, Rs, Rd),
                      %% Membership test is a little counter-intuitive here; if the
                      %% provided ETag is a member, we follow the error case out
@@ -403,20 +403,20 @@ decision(v3l7, Rs, Rd) ->
     decision_test(method(Rd), 'POST', v3m7, 404, Rs, Rd);
 %% "IMS exists?"
 decision(v3l13, Rs, Rd) ->
-    decision_test(get_header_val("if-modified-since", Rd), undefined, v3m16, v3l14, Rs, Rd);
+    decision_test(get_header_val('If-Modified-Since', Rd), undefined, v3m16, v3l14, Rs, Rd);
 %% "IMS is valid date?"
 decision(v3l14, Rs, Rd) -> 
-    IMSDate = get_header_val("if-modified-since", Rd),
+    IMSDate = get_header_val('If-Modified-Since', Rd),
     decision_test(webmachine_util:convert_request_date(IMSDate), bad_date, v3m16, v3l15, Rs, Rd);
 %% "IMS > Now?"
 decision(v3l15, Rs, Rd) ->
     NowDateTime = calendar:universal_time(),
-    ReqDate = get_header_val("if-modified-since", Rd),
+    ReqDate = get_header_val('If-Modified-Since', Rd),
     ReqErlDate = webmachine_util:convert_request_date(ReqDate),
     decision_test(ReqErlDate > NowDateTime, true, v3m16, v3l17, Rs, Rd);
 %% "Last-Modified > IMS?"
 decision(v3l17, Rs, Rd) ->
-    ReqDate = get_header_val("if-modified-since", Rd),    
+    ReqDate = get_header_val('If-Modified-Since', Rd),    
     ReqErlDate = webmachine_util:convert_request_date(ReqDate),
     {ResErlDate, Rs1, Rd1} = controller_call(last_modified, Rs, Rd),
     decision_test(ResErlDate =:= undefined orelse ResErlDate > ReqErlDate,
@@ -600,7 +600,7 @@ decision(v3p11, Rs, Rd) ->
     end.
 
 accept_helper(Rs, Rd) ->
-    CT = case get_header_val("content-type", Rd) of
+    CT = case get_header_val('Content-Type', Rd) of
              undefined -> "application/octet-stream";
              Other -> Other
          end,
@@ -617,7 +617,7 @@ accept_helper(Rs, Rd) ->
 
 % Only called for 'GET' and 'HEAD' - check if 206 result is allowed
 check_if_range(Etag, LastModified, Rd) ->
-    Rd#wm_reqdata{is_range_ok = is_if_range_ok(get_header_val("if-range", Rd), Etag, LastModified)}.
+    Rd#wm_reqdata{is_range_ok = is_if_range_ok(get_header_val('If-Range', Rd), Etag, LastModified)}.
 
 is_if_range_ok(undefined, _ETag, _LM) ->
     true;

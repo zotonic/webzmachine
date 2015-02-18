@@ -161,10 +161,10 @@ get_option(Option, Options, Default) ->
     {proplists:get_value(Option, Options, Default), proplists:delete(Option, Options)}.
     
 host_headers(ReqData) ->
-    [ V || V <- [wrq:get_req_header_lc(H, ReqData)
-                 || H <- ["x-forwarded-host",
-                          "x-forwarded-server",
-                          "host"]],
+    [ V || V <- [wrq:get_req_header(H, ReqData)
+                 || H <- ["X-Forwarded-Host",
+                          "X-Forwarded-Server",
+                          'Host']],
      V /= undefined].
 
 
