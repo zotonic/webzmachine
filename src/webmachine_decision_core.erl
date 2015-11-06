@@ -31,8 +31,13 @@ handle_request(Resource, ReqData) ->
         d(v3b13, Resource, ReqData)
     catch
         error:X ->
-            ?WM_DBG(X),            
-            error_response(erlang:get_stacktrace(), Resource, ReqData)
+            case application:get_env(webzmachine, error_handler) of
+                controller ->
+                    throw({stop_request, 500, erlang:get_stacktrace()});
+                _ErrorHandler ->
+                    ?WM_DBG(X),            
+                    error_response(erlang:get_stacktrace(), Resource, ReqData)
+            end
     end.
 
 %% @doc Call the controller or a default.
@@ -77,10 +82,15 @@ respond(Code, Rs, Rd) ->
                 TEHdr -> choose_transfer_encoding(TEHdr, Rs, Rd)
             end;
         Code when Code =:= 403; Code =:= 404; Code =:= 410 ->
-            {ok, ErrorHandler} = application:get_env(webzmachine, error_handler),
-            Reason = {none, none, []},
-            {ErrorHTML, RdError} = ErrorHandler:render_error(Code, Rd, Reason),
-            {Rs, wrq:set_resp_body(ErrorHTML, RdError)};
+            case application:get_env(webzmachine, error_handler) of
+                controller ->
+                    controller_call(finish_request, Rs, Rd),
+                    throw({stop_request, Code});
+                ErrorHandler ->
+                    Reason = {none, none, []},
+                    {ErrorHTML, RdError} = ErrorHandler:render_error(Code, Rd, Reason),
+                    {Rs, wrq:set_resp_body(ErrorHTML, RdError)}
+            end;
         304 ->
             RdNoCT = wrq:remove_resp_header("Content-Type", Rd),
             {Etag, RsEt, RdEt0} = controller_call(generate_etag, Rs, RdNoCT),
@@ -105,10 +115,16 @@ respond(Code, Headers, Rs, Rd) ->
     respond(Code, Rs, RdHs).
 
 error_response(Code, Reason, Rs, Rd) ->
-    {ok, ErrorHandler} = application:get_env(webzmachine, error_handler),
-    {ErrorHTML, Rd1} = ErrorHandler:render_error(Code, Rd, Reason),
-    Rd2 = wrq:set_resp_body(ErrorHTML, Rd1),
-    respond(Code, Rs, Rd2).
+    case application:get_env(webzmachine, error_handler) of
+        controller ->
+            controller_call(finish_request, Rs, Rd),
+            throw({stop_request, Code, Reason});
+        ErrorHandler ->
+            {ErrorHTML, Rd1} = ErrorHandler:render_error(Code, Rd, Reason),
+            Rd2 = wrq:set_resp_body(ErrorHTML, Rd1),
+            respond(Code, Rs, Rd2)
+    end.
+
 error_response(Reason, Rs, Rd) ->
     error_response(500, Reason, Rs, Rd).
 

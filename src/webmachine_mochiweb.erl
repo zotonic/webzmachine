@@ -85,6 +85,7 @@ loop(MochiReq, LoopOpts) ->
                                   Dispatcher ->
                                       Dispatcher:dispatch(Host, Path, ReqData)                                      
                               end,
+    ErrorHandler = application:get_env(webzmachine, error_handler),
     case Dispatch of
         {no_dispatch_match, undefined, undefined} ->
             no_dispatch_match(ReqDispatch);
@@ -92,7 +93,7 @@ loop(MochiReq, LoopOpts) ->
             no_dispatch_match(ReqDispatch);
         {Mod, ModOpts, HostTokens, Port, PathTokens, Bindings, AppRoot, StringPath} ->
             % TODO: set lager:md() here
-            {ok, Resource} = webmachine_controller:init(ReqData, Mod, ModOpts),
+            {ok, Resource} = webmachine_controller:init(ReqDispatch, Mod, ModOpts),
             {ok,RD1} = webmachine_request:load_dispatch_data(Bindings,HostTokens,Port,PathTokens,AppRoot,StringPath,ReqDispatch),
             {ok,RD2} = webmachine_request:set_metadata('controller_module', Mod, RD1),
             try 
@@ -114,10 +115,29 @@ loop(MochiReq, LoopOpts) ->
                         erlang:put(mochiweb_request_force_close, true)
                 end
             catch
+                throw:{stop_request, ResponseCode, Reason} 
+                   when ErrorHandler =:= controller, is_integer(ResponseCode), ResponseCode >= 400, ResponseCode =< 500 ->
+                    {ok, ErrResource} = webmachine_controller:init(ReqDispatch, controller_http_error, ModOpts),
+                    {ok, ErrRD1} = webmachine_request:load_dispatch_data(Bindings,HostTokens,Port,PathTokens,AppRoot,StringPath,ReqDispatch),
+                    {ok, ErrRD2} = webmachine_request:set_metadata(controller_module_error, Mod, ErrRD1),
+                    {ok, ErrRD3} = webmachine_request:set_metadata(error_reason, Reason, ErrRD2),
+                    render_error(ResponseCode, ErrResource, ErrRD3, Mod);
+                throw:{stop_request, ResponseCode} 
+                  when ErrorHandler =:= controller, is_integer(ResponseCode), ResponseCode >= 400, ResponseCode =< 500 ->
+                    {ok, ErrResource} = webmachine_controller:init(ReqDispatch, controller_http_error, ModOpts),
+                    {ok, ErrRD1} = webmachine_request:load_dispatch_data(Bindings,HostTokens,Port,PathTokens,AppRoot,StringPath,ReqDispatch),
+                    {ok, ErrRD2} = webmachine_request:set_metadata(controller_module_error, Mod, ErrRD1),
+                    render_error(ResponseCode, ErrResource, ErrRD2, Mod);
                 throw:{stop_request, ResponseCode} when is_integer(ResponseCode) -> 
                     {ok,RD3} = webmachine_request:send_response(RD2#wm_reqdata{response_code=ResponseCode}),
                     webmachine_controller:stop(Resource, RD3),
                     webmachine_decision_core:do_log(webmachine_request:log_data(RD3));
+                error:{throw, Error} when ErrorHandler =:= controller ->
+                    {ok, ErrResource} = webmachine_controller:init(ReqDispatch, controller_http_error, ModOpts),
+                    {ok, ErrRD1} = webmachine_request:load_dispatch_data(Bindings,HostTokens,Port,PathTokens,AppRoot,StringPath,ReqDispatch),
+                    {ok, ErrRD2} = webmachine_request:set_metadata(controller_module_error, Mod, ErrRD1),
+                    {ok, ErrRD3} = webmachine_request:set_metadata(error_reason, {error, {throw, Error, erlang:get_stacktrace()}}, ErrRD2),
+                    render_error(500, ErrResource, ErrRD3, Mod);
                 error:{badmatch, {error, Error}} when Error =:= epipe; Error =:= enotconn ->
                     error_logger:info_msg("~p:~p Dropped connection (~p) on ~p ~p", [?MODULE, ?LINE, Error, Host, Path]),
                     erlang:put(mochiweb_request_force_close, true);
@@ -138,12 +158,17 @@ no_dispatch_match(ReqDispatch) ->
     no_dispatch_match(wrq:method(ReqDispatch), ReqDispatch).
 
 no_dispatch_match(Method, ReqDispatch) when Method =:= 'GET'; Method =:= 'POST' ->
-    {ok, ErrorHandler} = application:get_env(webzmachine, error_handler),
-    {ErrorHTML,ReqState1} = ErrorHandler:render_error(404, ReqDispatch, {none, none, []}),
-    ReqState2 = webmachine_request:append_to_response_body(ErrorHTML, ReqState1),
-    {ok,ReqState3} = webmachine_request:send_response(ReqState2#wm_reqdata{response_code=404}),
-    LogData = webmachine_request:log_data(ReqState3),
-    webmachine_decision_core:do_log(LogData);
+    case application:get_env(webzmachine, error_handler) of
+        controller ->
+            render_error(404, ReqDispatch);
+        ErrorHandler ->
+            {ok, ErrorHandler} = application:get_env(webzmachine, error_handler),
+            {ErrorHTML,ReqState1} = ErrorHandler:render_error(404, ReqDispatch, {none, none, []}),
+            ReqState2 = webmachine_request:append_to_response_body(ErrorHTML, ReqState1),
+            {ok,ReqState3} = webmachine_request:send_response(ReqState2#wm_reqdata{response_code=404}),
+            LogData = webmachine_request:log_data(ReqState3),
+            webmachine_decision_core:do_log(LogData)
+    end;
 no_dispatch_match('CONNECT', ReqDispatch) ->
     {ok,ReqState1} = webmachine_request:send_response(ReqDispatch#wm_reqdata{response_code=400}),
     LogData = webmachine_request:log_data(ReqState1),
@@ -152,6 +177,37 @@ no_dispatch_match(_Method, ReqDispatch) ->
     {ok,ReqState1} = webmachine_request:send_response(ReqDispatch#wm_reqdata{response_code=404}),
     LogData = webmachine_request:log_data(ReqState1),
     webmachine_decision_core:do_log(LogData).
+
+
+render_error(ResponseCode, ReqDispatch) ->
+    {ok, ErrResource} = webmachine_controller:init(ReqDispatch, controller_http_error, []),
+    PathInfo = case webmachine_request:get_metadata(zotonic_host, ReqDispatch) of
+                    undefined -> [];
+                    Host -> [{zotonic_host, Host}]
+               end,
+    {ok, ErrRD1} = webmachine_request:load_dispatch_data(PathInfo,[],none,[],"",wrq:path(ReqDispatch),ReqDispatch),
+    render_error(ResponseCode, ErrResource, ErrRD1, controller_http_error).
+
+render_error(ResponseCode, ErrResource, ErrRD, Mod) ->
+    {ok, ErrRD1} = webmachine_request:set_metadata(controller_module, controller_http_error, ErrRD),
+    {ok, ErrRD2} = webmachine_request:set_metadata(http_status_code, ResponseCode, ErrRD1),
+    try
+        {_, ErrRsFin, ErrRdFin} = webmachine_decision_core:handle_request(ErrResource, ErrRD2),
+        {_, ErrRdResp} = webmachine_request:send_response(ErrRdFin#wm_reqdata{response_code=ResponseCode}),
+        webmachine_controller:stop(ErrRsFin, ErrRdResp),     
+        ErrLogData0 = webmachine_request:log_data(ErrRdResp),
+        webmachine_decision_core:do_log(ErrLogData0#wm_log_data{controller_module=Mod}),
+        ok
+    catch
+        error:{badmatch, {error, Error}} when Error =:= epipe; Error =:= enotconn ->
+            erlang:put(mochiweb_request_force_close, true);
+        _:Error ->
+            error_logger:warning_msg("~p:~p caught error ~p (stacktrace ~p)", [?MODULE, ?LINE, Error, erlang:get_stacktrace()]),
+            {ok,RD3} = webmachine_request:send_response(ErrRD2#wm_reqdata{response_code=500}),
+            webmachine_controller:stop(ErrResource, RD3),
+            webmachine_decision_core:do_log(webmachine_request:log_data(RD3))
+    end.
+
 
 
 get_option(Option, Options) ->
@@ -172,7 +228,7 @@ maybe_make_atom("CONNECT") -> 'CONNECT';
 maybe_make_atom(Method) -> Method.
 
 %% @doc Sometimes a connection gets re-used for different sites. Make sure that no information
-%% leaks from on request to another.
+%% leaks from one request to another.
 reset_process_dictionary() ->
     Keys = [
         mochiweb_request_qs,
