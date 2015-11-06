@@ -32,7 +32,7 @@ handle_request(Resource, ReqData) ->
     catch
         error:X ->
             case application:get_env(webzmachine, error_handler) of
-                controller ->
+                {ok, controller} ->
                     throw({stop_request, 500, erlang:get_stacktrace()});
                 _ErrorHandler ->
                     ?WM_DBG(X),            
@@ -83,10 +83,10 @@ respond(Code, Rs, Rd) ->
             end;
         Code when Code =:= 403; Code =:= 404; Code =:= 410 ->
             case application:get_env(webzmachine, error_handler) of
-                controller ->
+                {ok, controller} ->
                     controller_call(finish_request, Rs, Rd),
                     throw({stop_request, Code});
-                ErrorHandler ->
+                {ok, ErrorHandler} ->
                     Reason = {none, none, []},
                     {ErrorHTML, RdError} = ErrorHandler:render_error(Code, Rd, Reason),
                     {Rs, wrq:set_resp_body(ErrorHTML, RdError)}
@@ -116,10 +116,10 @@ respond(Code, Headers, Rs, Rd) ->
 
 error_response(Code, Reason, Rs, Rd) ->
     case application:get_env(webzmachine, error_handler) of
-        controller ->
+        {ok, controller} ->
             controller_call(finish_request, Rs, Rd),
             throw({stop_request, Code, Reason});
-        ErrorHandler ->
+        {ok, ErrorHandler} ->
             {ErrorHTML, Rd1} = ErrorHandler:render_error(Code, Rd, Reason),
             Rd2 = wrq:set_resp_body(ErrorHTML, Rd1),
             respond(Code, Rs, Rd2)

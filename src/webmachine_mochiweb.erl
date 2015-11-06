@@ -72,6 +72,7 @@ init_reqdata(MochiReq) ->
 
 loop(MochiReq, LoopOpts) ->
     reset_process_dictionary(),
+    {ok, ErrorHandler} = application:get_env(webzmachine, error_handler),
     ReqData = init_reqdata(MochiReq),
     Host = case host_headers(ReqData) of
                [H|_] -> H;
@@ -85,7 +86,6 @@ loop(MochiReq, LoopOpts) ->
                                   Dispatcher ->
                                       Dispatcher:dispatch(Host, Path, ReqData)                                      
                               end,
-    ErrorHandler = application:get_env(webzmachine, error_handler),
     case Dispatch of
         {no_dispatch_match, undefined, undefined} ->
             no_dispatch_match(ReqDispatch);
@@ -159,10 +159,9 @@ no_dispatch_match(ReqDispatch) ->
 
 no_dispatch_match(Method, ReqDispatch) when Method =:= 'GET'; Method =:= 'POST' ->
     case application:get_env(webzmachine, error_handler) of
-        controller ->
+        {ok, controller} ->
             render_error(404, ReqDispatch);
-        ErrorHandler ->
-            {ok, ErrorHandler} = application:get_env(webzmachine, error_handler),
+        {ok, ErrorHandler} ->
             {ErrorHTML,ReqState1} = ErrorHandler:render_error(404, ReqDispatch, {none, none, []}),
             ReqState2 = webmachine_request:append_to_response_body(ErrorHTML, ReqState1),
             {ok,ReqState3} = webmachine_request:send_response(ReqState2#wm_reqdata{response_code=404}),
