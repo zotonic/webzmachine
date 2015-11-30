@@ -203,13 +203,8 @@ controller_call(F, Controller, ReqData) ->
              Controller#wm_controller.mod,
              F,
              [ReqData, Controller#wm_controller.mod_state]),
-    Result = try
-                {Res,RD1,ModState1} = apply(Controller#wm_controller.mod, F, [ReqData, Controller#wm_controller.mod_state]),
-                {Res, Controller#wm_controller{mod_state=ModState1}, RD1}
-             catch C:R ->
-                Reason = {C, R, erlang:get_stacktrace()},
-                {{error, Reason}, Controller, ReqData}
-             end,
+    {Res, RD1, ModState1} = apply(Controller#wm_controller.mod, F, [ReqData, Controller#wm_controller.mod_state]),
+    Result = {Res, Controller#wm_controller{mod_state=ModState1}, RD1},
     log_call(Controller#wm_controller.trace,
              attempt, 
              Controller#wm_controller.mod,

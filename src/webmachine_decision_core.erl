@@ -31,12 +31,13 @@ handle_request(Resource, ReqData) ->
         d(v3b13, Resource, ReqData)
     catch
         error:X ->
+            Stacktrace = erlang:get_stacktrace(),
             case application:get_env(webzmachine, error_handler) of
                 {ok, controller} ->
-                    throw({stop_request, 500, erlang:get_stacktrace()});
+                    throw({stop_request, 500, {X, Stacktrace}});
                 _ErrorHandler ->
                     ?WM_DBG(X),            
-                    error_response(erlang:get_stacktrace(), Resource, ReqData)
+                    error_response(Stacktrace, Resource, ReqData)
             end
     end.
 

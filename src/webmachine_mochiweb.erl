@@ -115,34 +115,36 @@ loop(MochiReq, LoopOpts) ->
                         erlang:put(mochiweb_request_force_close, true)
                 end
             catch
+                throw:{stop_request, 500, Reason} ->
+                    error_logger:error_msg("~p:~p stop_request ~p (reason ~p)", [?MODULE, ?LINE, 500, Reason]),
+                    handle_stop_request(ErrorHandler, 500, Reason, ReqDispatch, Mod, ModOpts,
+                                        Bindings,HostTokens,Port,PathTokens,AppRoot,StringPath, ReqDispatch);
                 throw:{stop_request, ResponseCode, Reason} 
-                   when ErrorHandler =:= controller, is_integer(ResponseCode), ResponseCode >= 400, ResponseCode =< 500 ->
-                    {ok, ErrResource} = webmachine_controller:init(ReqDispatch, controller_http_error, ModOpts),
-                    {ok, ErrRD1} = webmachine_request:load_dispatch_data(Bindings,HostTokens,Port,PathTokens,AppRoot,StringPath,ReqDispatch),
-                    {ok, ErrRD2} = webmachine_request:set_metadata(controller_module_error, Mod, ErrRD1),
-                    {ok, ErrRD3} = webmachine_request:set_metadata(error_reason, Reason, ErrRD2),
-                    render_error(ResponseCode, ErrResource, ErrRD3, Mod);
+                   when is_integer(ResponseCode), ResponseCode >= 400, ResponseCode =< 500 ->
+                    handle_stop_request(ErrorHandler, ResponseCode, Reason, ReqDispatch, Mod, ModOpts,
+                                        Bindings,HostTokens,Port,PathTokens,AppRoot,StringPath,ReqDispatch);
+                throw:{stop_request, 500} ->
+                    error_logger:error_msg("~p:~p stop_request ~p (stacktrace ~p)", [?MODULE, ?LINE, 500, erlang:get_stacktrace()]),
+                    handle_stop_request(ErrorHandler, 500, undefined, ReqDispatch, Mod, ModOpts,
+                                        Bindings,HostTokens,Port,PathTokens,AppRoot,StringPath, ReqDispatch);
                 throw:{stop_request, ResponseCode} 
-                  when ErrorHandler =:= controller, is_integer(ResponseCode), ResponseCode >= 400, ResponseCode =< 500 ->
-                    {ok, ErrResource} = webmachine_controller:init(ReqDispatch, controller_http_error, ModOpts),
-                    {ok, ErrRD1} = webmachine_request:load_dispatch_data(Bindings,HostTokens,Port,PathTokens,AppRoot,StringPath,ReqDispatch),
-                    {ok, ErrRD2} = webmachine_request:set_metadata(controller_module_error, Mod, ErrRD1),
-                    render_error(ResponseCode, ErrResource, ErrRD2, Mod);
-                throw:{stop_request, ResponseCode} when is_integer(ResponseCode) -> 
+                  when is_integer(ResponseCode), ResponseCode >= 400, ResponseCode =< 500 ->
+                    handle_stop_request(ErrorHandler, ResponseCode, undefined, ReqDispatch, Mod, ModOpts,
+                                        Bindings,HostTokens,Port,PathTokens,AppRoot,StringPath,ReqDispatch);
+                throw:{stop_request, ResponseCode} 
+                  when is_integer(ResponseCode) -> 
                     {ok,RD3} = webmachine_request:send_response(RD2#wm_reqdata{response_code=ResponseCode}),
                     webmachine_controller:stop(Resource, RD3),
                     webmachine_decision_core:do_log(webmachine_request:log_data(RD3));
-                error:{throw, Error} when ErrorHandler =:= controller ->
-                    {ok, ErrResource} = webmachine_controller:init(ReqDispatch, controller_http_error, ModOpts),
-                    {ok, ErrRD1} = webmachine_request:load_dispatch_data(Bindings,HostTokens,Port,PathTokens,AppRoot,StringPath,ReqDispatch),
-                    {ok, ErrRD2} = webmachine_request:set_metadata(controller_module_error, Mod, ErrRD1),
-                    {ok, ErrRD3} = webmachine_request:set_metadata(error_reason, {error, {throw, Error, erlang:get_stacktrace()}}, ErrRD2),
-                    render_error(500, ErrResource, ErrRD3, Mod);
+                throw:Error ->
+                    Reason = {error, {throw, Error, erlang:get_stacktrace()}},
+                    handle_stop_request(ErrorHandler, 500, Reason, ReqDispatch, Mod, ModOpts,
+                                        Bindings,HostTokens,Port,PathTokens,AppRoot,StringPath,ReqDispatch);
                 error:{badmatch, {error, Error}} when Error =:= epipe; Error =:= enotconn ->
                     error_logger:info_msg("~p:~p Dropped connection (~p) on ~p ~p", [?MODULE, ?LINE, Error, Host, Path]),
                     erlang:put(mochiweb_request_force_close, true);
                 error:Error -> 
-                    error_logger:warning_msg("~p:~p caught error ~p (stacktrace ~p)", [?MODULE, ?LINE, Error, erlang:get_stacktrace()]),
+                    error_logger:error_msg("~p:~p caught error ~p (stacktrace ~p)", [?MODULE, ?LINE, Error, erlang:get_stacktrace()]),
                     {ok,RD3} = webmachine_request:send_response(RD2#wm_reqdata{response_code=500}),
                     webmachine_controller:stop(Resource, RD3),
                     webmachine_decision_core:do_log(webmachine_request:log_data(RD3))
@@ -153,6 +155,21 @@ loop(MochiReq, LoopOpts) ->
         handled ->
             nop
     end.
+
+
+handle_stop_request(controller, ResponseCode, Reason, ReqDispatch, Mod, ModOpts,
+                    Bindings, HostTokens, Port, PathTokens, AppRoot, StringPath, ReqDispatch) ->
+    {ok, ErrResource} = webmachine_controller:init(ReqDispatch, controller_http_error, ModOpts),
+    {ok, ErrRD1} = webmachine_request:load_dispatch_data(Bindings,HostTokens,Port,PathTokens,AppRoot,StringPath,ReqDispatch),
+    {ok, ErrRD2} = webmachine_request:set_metadata(controller_module_error, Mod, ErrRD1),
+    {ok, ErrRD3} = webmachine_request:set_metadata(error_reason, Reason, ErrRD2),
+    render_error(ResponseCode, ErrResource, ErrRD3, Mod);
+handle_stop_request(_ErrorHandler, ResponseCode, _Reason, ReqDispatch, Mod, ModOpts,
+                    _Bindings, _HostTokens, _Port, _PathTokens, _AppRoot, _StringPath, RD) ->
+    {ok, Resource} = webmachine_controller:init(ReqDispatch, Mod, ModOpts),
+    {ok,RD3} = webmachine_request:send_response(RD#wm_reqdata{response_code=ResponseCode}),
+    webmachine_controller:stop(Resource, RD3),
+    webmachine_decision_core:do_log(webmachine_request:log_data(RD3)).
 
 no_dispatch_match(ReqDispatch) ->
     no_dispatch_match(wrq:method(ReqDispatch), ReqDispatch).
