@@ -623,7 +623,7 @@ get_range_headers([{Start, Length}], Size, _ContentType) ->
                   {"Content-Length", make_io(Length)}],
     {HeaderList, none};
 get_range_headers(Parts, Size, ContentType) when is_list(Parts) ->
-    Boundary = mochihex:to_hex(crypto:rand_bytes(8)),
+    Boundary = mochihex:to_hex(crypto:strong_rand_bytes(8)),
     Lengths = [
         iolist_size(part_preamble(Boundary, ContentType, Start, Length, Size)) + Length + 2
         || {Start,Length} <- Parts
