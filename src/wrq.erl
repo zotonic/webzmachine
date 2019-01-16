@@ -225,17 +225,39 @@ get_resp_header(HdrName, _RD=#wm_reqdata{resp_headers=RespH}) ->
 
 set_resp_header(K, V, RD=#wm_reqdata{resp_headers=RespH})
   when is_list(K),is_list(V) ->
-    RD#wm_reqdata{resp_headers=mochiweb_headers:enter(K, V, RespH)};
+    V1 = check_resp_header_value(V),
+    RD#wm_reqdata{resp_headers=mochiweb_headers:enter(K, V1, RespH)};
 set_resp_header(K, V, RD=#wm_reqdata{resp_headers=RespH})
   when is_list(K),is_binary(V) ->
-    RD#wm_reqdata{resp_headers=mochiweb_headers:enter(K, binary_to_list(V), RespH)}.
+    V1 = check_resp_header_value( binary_to_list(V) ),
+    RD#wm_reqdata{resp_headers=mochiweb_headers:enter(K, V1, RespH)}.
 
 set_resp_headers(Hdrs, RD=#wm_reqdata{resp_headers=RespH}) ->
-    F = fun({K, V}, Acc) -> mochiweb_headers:enter(K, V, Acc) end,
+    F = fun({K, V}, Acc) ->
+        V1 = check_resp_header_value(V),
+        mochiweb_headers:enter(K, V1, Acc)
+    end,
     RD#wm_reqdata{resp_headers=lists:foldl(F, RespH, Hdrs)}.
 
+%% @doc Raise an error if the header contains invalid characters
+%%      We don't allow any newlines in header values.
+check_resp_header_value(V) when is_list(V) ->
+    lists:all(fun is_valid_header_value/1, V)
+        orelse erlang:error({resp_header_value_invalid, V}),
+    V.
+
+is_valid_header_value(9) -> true;
+is_valid_header_value(C) when C < 32 -> false;
+is_valid_header_value(C) when C > 127 -> false;
+is_valid_header_value($\\) -> false;
+is_valid_header_value(_) -> true.
+
+
 fresh_resp_headers(Hdrs, RD) ->
-    F = fun({K, V}, Acc) -> mochiweb_headers:enter(K, V, Acc) end,
+    F = fun({K, V}, Acc) ->
+        V1 = check_resp_header_value(V),
+        mochiweb_headers:enter(K, V1, Acc)
+    end,
     RD#wm_reqdata{resp_headers=lists:foldl(F, mochiweb_headers:empty(), Hdrs)}.
 
 remove_resp_header(K, RD=#wm_reqdata{resp_headers=RespH}) when is_list(K) ->
@@ -244,7 +266,10 @@ remove_resp_header(K, RD=#wm_reqdata{resp_headers=RespH}) when is_list(K) ->
                                      mochiweb_headers:to_list(RespH)))}.
 
 merge_resp_headers(Hdrs, RD=#wm_reqdata{resp_headers=RespH}) ->
-    F = fun({K, V}, Acc) -> mochiweb_headers:insert(K, V, Acc) end,
+    F = fun({K, V}, Acc) ->
+        V1 = check_resp_header_value(V),
+        mochiweb_headers:insert(K, V1, Acc)
+    end,
     NewHdrs = lists:foldl(F, RespH, Hdrs),
     RD#wm_reqdata{resp_headers=NewHdrs}.
 
