@@ -242,9 +242,10 @@ set_resp_headers(Hdrs, RD=#wm_reqdata{resp_headers=RespH}) ->
 %% @doc Raise an error if the header contains invalid characters
 %%      We don't allow any newlines in header values.
 check_resp_header_value(V) when is_list(V) ->
-    lists:all(fun is_valid_header_value/1, V)
-        orelse erlang:error({resp_header_value_invalid, V}),
-    V.
+    V1 = lists:flatten(V),
+    lists:all(fun is_valid_header_value/1, V1)
+        orelse erlang:error({resp_header_value_invalid, V1}),
+    V1.
 
 is_valid_header_value(9) -> true;
 is_valid_header_value(C) when C < 32 -> false;
