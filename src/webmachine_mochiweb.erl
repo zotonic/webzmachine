@@ -23,6 +23,8 @@
 -include_lib("wm_reqdata.hrl").
 -include_lib("webmachine_logger.hrl").
 
+-compile(tuple_calls).
+
 start(Options) ->
     {PName, Options1} = case get_option(name, Options) of
       {undefined, _} -> {?MODULE, Options};
