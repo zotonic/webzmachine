@@ -426,9 +426,7 @@ send(Socket, IoList) when is_list(IoList) ->
 
 
 sendfile(erlang, Socket, Filename, Offset, Length) ->
-    sendfile_erlang(Socket, Filename, Offset, Length);
-sendfile(yaws, Socket, Filename, Offset, Length) ->
-    sendfile_yaws(Socket, Filename, Offset, Length).
+    sendfile_erlang(Socket, Filename, Offset, Length).
 
 sendfile_erlang(Socket, Filename, Offset, Length) ->
     {ok, FD} = file:open(Filename, [raw,binary]),
@@ -440,13 +438,6 @@ sendfile_erlang(Socket, Filename, Offset, Length) ->
         end
     after
         file:close(FD)
-    end.
-
-sendfile_yaws(Socket, Filename, Offset, Length) ->
-    case sendfile:send(Socket, Filename, Offset, Length) of
-        {ok, Bytes} -> Bytes;
-        {error, closed} -> Length;
-        _ -> exit(normal)
     end.
 
 get_resp_body_size({device, Size, _} = Body) ->
@@ -856,10 +847,5 @@ use_sendfile() ->
     case application:get_env(webzmachine, use_sendfile) of
         undefined -> disable;
         {ok, disable} -> disable;
-        {ok, erlang} -> erlang;
-        {ok, yaws} -> 
-            case sendfile:enabled() of
-                true -> yaws;
-                false -> disable
-            end
+        {ok, erlang} -> erlang
     end.
