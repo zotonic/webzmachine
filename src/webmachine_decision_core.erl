@@ -30,8 +30,7 @@ handle_request(Resource, ReqData) ->
     try
         d(v3b13, Resource, ReqData)
     catch
-        error:X ->
-            Stacktrace = erlang:get_stacktrace(),
+        error:X:Stacktrace ->
             case application:get_env(webzmachine, error_handler) of
                 {ok, controller} ->
                     throw({stop_request, 500, {X, Stacktrace}});

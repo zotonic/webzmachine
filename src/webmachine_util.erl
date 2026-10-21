@@ -383,16 +383,13 @@ compare_ims_dates_test() ->
     ?assertEqual(false, compare_ims_dates(Early, Late)).
 
 guess_mime_test() ->
-    TextTypes = [".html",".css",".htc",".manifest",".txt"],
-    AppTypes = [".xhtml",".xml",".js",".swf",".zip",".bz2",
-                ".gz",".tar",".tgz"],
-    ImgTypes = [".jpg",".jpeg",".gif",".png",".ico",".svg"],
-    ?assertEqual([], [ T || T <- TextTypes,
-                            1 /= string:str(guess_mime(T),"text/") ]),
-    ?assertEqual([], [ T || T <- AppTypes,
-                            1 /= string:str(guess_mime(T),"application/") ]),
-    ?assertEqual([], [ T || T <- ImgTypes,
-                            1 /= string:str(guess_mime(T),"image/") ]).
+    TextTypes = ["test.html","test.css","test.htc","test.manifest","test.txt"],
+    AppTypes = ["test.xhtml","test.xml","test.js","test.swf","test.zip","test.bz2",
+                "test.gz","test.tar","test.tgz"],
+    ImgTypes = ["test.jpg","test.jpeg","test.gif","test.png","test.ico","test.svg"],
+    ?assertEqual([], [ T || T <- TextTypes, 1 /= string:str(guess_mime(T), "text/") ]),
+    ?assertEqual([], [ T || T <- AppTypes, 1 /= string:str(guess_mime(T), "application/") ]),
+    ?assertEqual([], [ T || T <- ImgTypes, 1 /= string:str(guess_mime(T), "image/") ]).
 
 
 now_diff_milliseconds_test() ->
