@@ -125,8 +125,8 @@ loop(MochiReq, LoopOpts) ->
                    when is_integer(ResponseCode), ResponseCode >= 400, ResponseCode =< 500 ->
                     handle_stop_request(ErrorHandler, ResponseCode, Reason, ReqDispatch, Mod, ModOpts,
                                         Bindings,HostTokens,Port,PathTokens,AppRoot,StringPath,ReqDispatch);
-                throw:{stop_request, 500} ->
-                    error_logger:error_msg("~p:~p stop_request ~p (stacktrace ~p)", [?MODULE, ?LINE, 500, erlang:get_stacktrace()]),
+                throw:{stop_request, 500}:Stacktrace ->
+                    error_logger:error_msg("~p:~p stop_request ~p (stacktrace ~p)", [?MODULE, ?LINE, 500, Stacktrace]),
                     handle_stop_request(ErrorHandler, 500, undefined, ReqDispatch, Mod, ModOpts,
                                         Bindings,HostTokens,Port,PathTokens,AppRoot,StringPath, ReqDispatch);
                 throw:{stop_request, ResponseCode} 
@@ -138,15 +138,15 @@ loop(MochiReq, LoopOpts) ->
                     {ok,RD3} = webmachine_request:send_response(RD2#wm_reqdata{response_code=ResponseCode}),
                     webmachine_controller:stop(Resource, RD3),
                     webmachine_decision_core:do_log(webmachine_request:log_data(RD3));
-                throw:Error ->
-                    Reason = {error, {throw, Error, erlang:get_stacktrace()}},
+                throw:Error:Stacktrace ->
+                    Reason = {error, {throw, Error, Stacktrace}},
                     handle_stop_request(ErrorHandler, 500, Reason, ReqDispatch, Mod, ModOpts,
                                         Bindings,HostTokens,Port,PathTokens,AppRoot,StringPath,ReqDispatch);
                 error:{badmatch, {error, Error}} when Error =:= epipe; Error =:= enotconn ->
                     error_logger:info_msg("~p:~p Dropped connection (~p) on ~p ~p", [?MODULE, ?LINE, Error, Host, Path]),
                     erlang:put(mochiweb_request_force_close, true);
-                error:Error -> 
-                    error_logger:error_msg("~p:~p caught error ~p (stacktrace ~p)", [?MODULE, ?LINE, Error, erlang:get_stacktrace()]),
+                error:Error:Stacktrace -> 
+                    error_logger:error_msg("~p:~p caught error ~p (stacktrace ~p)", [?MODULE, ?LINE, Error, Stacktrace]),
                     {ok,RD3} = webmachine_request:send_response(RD2#wm_reqdata{response_code=500}),
                     webmachine_controller:stop(Resource, RD3),
                     webmachine_decision_core:do_log(webmachine_request:log_data(RD3))
@@ -219,8 +219,8 @@ render_error(ResponseCode, ErrResource, ErrRD, Mod) ->
     catch
         error:{badmatch, {error, Error}} when Error =:= epipe; Error =:= enotconn ->
             erlang:put(mochiweb_request_force_close, true);
-        _:Error ->
-            error_logger:warning_msg("~p:~p caught error ~p (stacktrace ~p)", [?MODULE, ?LINE, Error, erlang:get_stacktrace()]),
+        _:Error:Stacktrace ->
+            error_logger:warning_msg("~p:~p caught error ~p (stacktrace ~p)", [?MODULE, ?LINE, Error, Stacktrace]),
             {ok,RD3} = webmachine_request:send_response(ErrRD2#wm_reqdata{response_code=500}),
             webmachine_controller:stop(ErrResource, RD3),
             webmachine_decision_core:do_log(webmachine_request:log_data(RD3))
